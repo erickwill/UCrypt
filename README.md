@@ -1,4 +1,3 @@
-```markdown
 # UCrypt
 
 A password manager for Chromium browsers — Brave, Edge, Helium and more. Works in Chrome too.
@@ -21,10 +20,11 @@ for none of that.
 - **Your backup lives in your Drive.** Turn sync on and the vault lands in your own Google
   Drive — not mine — already encrypted, so not even Google can read what's inside.
 
-Big-name managers charge you every year to keep your secrets inside someone else's cloud.
-UCrypt keeps your secrets where they belong — on your machine, under your key — and charges
-you nothing. Free for personal use isn't a promotion here. It's the point. Safety shouldn't
-be a subscription.
+1Password and Dashlane are subscriptions. Bitwarden wants an account on their servers.
+LastPass has had more breach headlines than most people have passwords. UCrypt keeps your
+secrets where they belong — on your machine, under your key — and charges you nothing.
+Free for personal use isn't a promotion here. It's the point. Safety shouldn't be a
+subscription.
 
 ## License
 
@@ -37,12 +37,13 @@ The source tree on main mirrors the sealed release. The sealed tarball is the ar
 verify it before use:
 
 - Version: v3.45.0 (R181)
-- Built: Soon
-- sha256: Soon
+- Built: <<FILL: BUILD DATE FROM SEAL LEDGER>>
+- sha256: <<FILL: SHA256 DIGEST FROM SEAL LEDGER>>
+
+Verify it:
 
 ```
 sha256sum ucrypt-extension-v3.45.0.tar.gz
 ```
 
 The output must match the digest above.
-```
