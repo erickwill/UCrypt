@@ -37,8 +37,8 @@ The source tree on main mirrors the sealed release. The sealed tarball is the ar
 verify it before use:
 
 - Version: v3.45.0 (R181)
-- Built: <<FILL: BUILD DATE FROM SEAL LEDGER>>
-- sha256: <<FILL: SHA256 DIGEST FROM SEAL LEDGER>>
+- Built: SOON
+- sha256: SOON
 
 Verify it:
 
