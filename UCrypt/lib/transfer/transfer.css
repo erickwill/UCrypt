@@ -1,0 +1,822 @@
+/* ==========================================================================
+   UCrypt — Direct transfer window (v2.42.14, R76 Part E)
+   Builds on the shared tokens/classes in style.css (var(--card), .btn, …).
+   Layout rules: cards p-4/p-6 equivalent (16–20px), 16–20px gaps, every
+   interactive element ≥ 44px tall, holds together at 360px width.
+   ========================================================================== */
+
+.transfer-body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  min-height: 100vh;
+}
+
+.transfer-main {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-sizing: border-box;
+}
+
+/* Header */
+.transfer-header h1 {
+  margin: 0 0 4px;
+  font-size: 1.25rem;
+}
+.transfer-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+/* Cards (match .card tokens but self-contained so transfer.html works alone) */
+.transfer-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 16px;           /* p-4 */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;               /* gap-4-ish vertical rhythm */
+}
+.transfer-card h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+.transfer-card h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+/* Role choice */
+.transfer-roles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.transfer-role-btn {
+  min-height: 64px;        /* ≥ 44px touch target */
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 12px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.transfer-role-btn:hover { border-color: var(--accent); }
+.transfer-role-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.transfer-role-icon { font-size: 1.2rem; }
+
+/* State lines */
+.transfer-state {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+/* Device list */
+.transfer-device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.transfer-device {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface, var(--card));
+}
+/* R128 §5 (the CEO's S4 — the inverted flow): the CHOSEN device is
+ * highlighted — an accent border + a soft tint, so the picked card reads
+ * at a glance (the CEO's screenshot: the chosen card was distinguishable
+ * only by its button's word). */
+.transfer-device.chosen {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface, var(--card)));
+}
+/* R128 §5 (law 0.30): the device choice advances the flow — the file card
+ * glows once to guide the eye to the next (and last) action. */
+.transfer-card.file-glow {
+  animation: ucryptFileGlow 1.4s ease-out 1;
+}
+@keyframes ucryptFileGlow {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); border-color: var(--accent); }
+  100% { box-shadow: 0 0 0 14px transparent; }
+}
+.transfer-device-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.transfer-device-name { font-weight: 600; font-size: 0.88rem; }
+.transfer-device-state { font-size: 0.75rem; color: var(--muted); }
+.transfer-device-pick {
+  min-height: 44px;
+  min-width: 64px;
+}
+.transfer-device-id {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+/* Fingerprint box */
+.transfer-fingerprint-box {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.transfer-fingerprint-label {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+/* R123 §2.4b — the sender's waiting note under the code field (law 0.37:
+   the waiting state says what it waits for; muted, never alarming). */
+.transfer-fingerprint-note {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.transfer-fingerprint {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: var(--accent);
+}
+
+/* ── R128 §3 (the CEO's S5 — the code-congruency mid-transfer) ──────────
+ * The two states of the sender's code field must never be confusable:
+ *  - WAITING (no answer yet): the placeholder dashes PULSE and the field
+ *    dims — a visible "waiting for their confirmation" chip rides beside
+ *    it (law 0.37: a waiting state says what it waits for; 0.26: it is
+ *    visually distinct from every terminal, never reading as broken).
+ *  - SET (the answer landed): the code GROWS (the filled state is the
+ *    prominent one during an active transfer), the pulse stops, and a
+ *    ✓ compare chip names the congruency ("both screens show this code").
+ * The incongruence window itself shrinks: the sender polls the answer at
+ * ~1.5 s while waiting (see page.js) — the two screens agree within
+ * moments of the accept. */
+.transfer-fingerprint.waiting {
+  color: var(--muted);
+  animation: ucryptFpWait 1.6s ease-in-out infinite;
+}
+@keyframes ucryptFpWait {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.transfer-fingerprint.set {
+  font-size: 1.7rem;
+  letter-spacing: 0.14em;
+}
+.transfer-fp-wait-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px auto 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2, rgba(127, 127, 127, 0.12));
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.transfer-fp-wait-chip::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: ucryptFpWait 1.6s ease-in-out infinite;
+}
+.transfer-fp-ok-chip {
+  display: inline-block;
+  margin: 6px auto 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ucrypt-ok, #2e7d32);
+  color: var(--ucrypt-ok, #2e7d32);
+  font-size: 0.72rem;
+}
+.transfer-fp-chip-row { text-align: center; }
+
+/* Progress */
+.transfer-progress {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.15));
+  overflow: hidden;
+}
+.transfer-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+/* Confirm summary (sender, before offer) */
+.transfer-confirm {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+.transfer-confirm .mono,
+.transfer-dialog-mono span {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
+/* Warning banner */
+.transfer-warning {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--amber);
+  border-radius: 10px;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--amber);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+/* Incoming offer rows */
+.transfer-incoming {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface, var(--card));
+}
+.transfer-incoming-title { font-weight: 600; font-size: 0.88rem; }
+.transfer-incoming-meta { font-size: 0.76rem; color: var(--muted); }
+
+/* Dialog */
+.transfer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 100;
+}
+.transfer-dialog {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  max-width: 440px;
+  width: 100%;
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 20px;           /* p-6 equivalent for the modal */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.transfer-dialog h2 { margin: 0; font-size: 1.05rem; }
+.transfer-dialog-row { margin: 0; font-size: 0.86rem; line-height: 1.5; }
+
+/* Toast */
+.transfer-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  padding: 10px 16px;
+  font-size: 0.82rem;
+  max-width: min(92vw, 480px);
+  z-index: 200;
+}
+.transfer-toast-error { border-left-color: var(--red); }
+
+/* Footer (sticky-safe: the main column is a flex container and the page body
+   is min-height 100vh; content pushes it naturally on overflow) */
+.transfer-footer {
+  margin-top: auto;
+  padding: 8px 2px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+.transfer-footer p { margin: 0; }
+
+/* Form bits on this page */
+#transferManualIn {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 84px;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+#transferFile {
+  font-size: 0.82rem;
+  padding: 8px 0;
+}
+
+/* Responsive: 360px */
+@media (max-width: 420px) {
+  .transfer-main { padding: 12px; gap: 12px; }
+  .transfer-card { padding: 14px; }
+  .transfer-roles { grid-template-columns: 1fr; }
+  .transfer-fingerprint { font-size: 1.05rem; }
+}
+
+/* R90 §5 — inline unlock row: field + button on one line, wrapping safely
+   at 360px; the field matches the shared textarea token height (≥44px). */
+.transfer-unlock-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: stretch;
+  margin: 8px 0 4px;
+}
+.transfer-unlock-row input[type="password"] {
+  flex: 1 1 200px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border, #444);
+  border-radius: 8px;
+  background: var(--card, #1c1c1c);
+  color: var(--text, #eee);
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+.transfer-unlock-row input[type="password"]:focus-visible {
+  outline: 2px solid var(--accent, #e6b84c);
+  outline-offset: 1px;
+}
+
+/* ==========================================================================
+   R107 "Discovery That Explains Itself" (v2.65.0) — the discovery truth
+   panel, the auto-arm strip, the Advanced manual zone. Same tokens as the
+   rest of this sheet (var(--card)/--border/--muted); ≥44px targets; holds
+   at 360px; BOTH themes render from the shared variables (law 0.22c).
+   ========================================================================== */
+
+/* --- The discovery truth panel ------------------------------------------ */
+.transfer-truth h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.transfer-truth-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.transfer-truth-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  flex-wrap: wrap;
+}
+.transfer-truth-row.ok { border-color: rgba(48, 164, 108, 0.45); }
+.transfer-truth-row.bad { border-color: rgba(220, 92, 92, 0.45); }
+.transfer-truth-mark {
+  font-weight: 700;
+  width: 18px;
+  text-align: center;
+  flex: none;
+}
+.transfer-truth-row.ok .transfer-truth-mark { color: #2e9e6b; }
+.transfer-truth-row.bad .transfer-truth-mark { color: #d55; }
+.transfer-truth-label {
+  font-size: 0.85rem;
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+.transfer-truth-detail {
+  color: var(--muted);
+  font-size: 0.78rem;
+  flex: none;
+}
+.transfer-truth-action {
+  flex: none;
+  min-height: 32px;
+}
+
+/* --- The auto-arm strip (countdown + Stop) -------------------------------- */
+.transfer-arm-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.transfer-arm-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+/* --- The Advanced manual zone -------------------------------------------- */
+details.transfer-manual-zone {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 12px 16px;
+}
+details.transfer-manual-zone > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  list-style: revert;
+}
+details.transfer-manual-zone[open] > summary {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+#transferManualBox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.transfer-manual-promo {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(214, 168, 74, 0.5);
+  background: rgba(214, 168, 74, 0.08);
+  color: var(--text);
+}
+.transfer-manual-step {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+.transfer-manual-step-label {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+/* --- The reverse-leg pulse ------------------------------------------------ */
+.transfer-pulse {
+  animation: transferPulse 1.4s ease-in-out infinite;
+}
+@keyframes transferPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(46, 158, 107, 0.45); }
+  50% { box-shadow: 0 0 0 6px rgba(46, 158, 107, 0.12); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transfer-pulse { animation: none; }
+}
+
+/* R108 §4.1 — THE EMBED MODE: the File-transfer tab hosts this experience
+   inside the options page (transfer.html?embed=1). The shell tightens —
+   the host card already provides padding, border and title; every behavior
+   inside the experience is byte-identical (one experience, one state). */
+.transfer-embed .transfer-main {
+  padding: 0;
+  max-width: none;
+  gap: 10px;
+}
+.transfer-embed .transfer-header { display: none; }
+
+/* ── R116 §2.3 — THE INLINE-FIX OVERLAYS (law 0.29; the CEO's S6) ─────────
+   The Discovery checklist's fixes open AS OVERLAYS inside File transfer —
+   the configuration lives here, not in another tab. The demoted fallback
+   row (the full-setup deep link) renders LAST and visually quieter — the
+   fallback path is never the headline. */
+.transfer-overlay-dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--text);
+  padding: 0;
+  max-width: 540px;
+  width: calc(100vw - 32px);
+  box-shadow: var(--shadow-lg);
+}
+.transfer-overlay-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+.transfer-connect {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(78vh, 640px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.transfer-overlay-dialog h3 {
+  margin: 0;
+  font-size: 1.02rem;
+}
+.transfer-overlay-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.transfer-chooser {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.transfer-chooser-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  min-height: 44px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface, var(--card));
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.transfer-chooser-option:hover { border-color: var(--accent); }
+.transfer-chooser-option.picked {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.transfer-chooser-tag {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.transfer-connect-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.transfer-overlay-result {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  min-height: 1em;
+}
+.transfer-overlay-result.ok { color: var(--ok, var(--accent)); }
+.transfer-overlay-result.err { color: var(--danger, var(--red)); }
+.transfer-overlay-recovery {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel2, var(--bg-soft));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text);
+  font-size: 0.84rem;
+}
+.transfer-overlay-recovery ul {
+  margin: 0 0 0 18px;
+  padding: 0;
+}
+.transfer-overlay-fallback {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  justify-content: flex-start;
+  opacity: 0.75;
+}
+.transfer-overlay-words {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface, var(--card));
+  color: var(--text);
+  box-sizing: border-box;
+}
+/* THE DEMOTED FALLBACK CLASS (the checklist's manual path): renders last,
+   visually quieter — present, honest, never competing with the primary
+   fix. The battery pins this class. */
+.transfer-truth-action--demoted {
+  border-style: dashed;
+  opacity: 0.72;
+  font-weight: 400;
+}
+
+/* ── R117 §2/§3 — the overlay header, the visible close button, the status
+   carry, and the manual-zone anchor flash (the CEO's S2/S3; laws 0.26,
+   0.29, 0.30). The close button is a REAL button (focusable, aria-labeled)
+   — a popup layer that cannot be dismissed by click is a dead end. ── */
+.transfer-overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+}
+.transfer-overlay-head h3 { margin: 0; }
+.transfer-overlay-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.transfer-overlay-close:hover,
+.transfer-overlay-close:focus-visible {
+  color: var(--text);
+  border-color: var(--text);
+  outline: none;
+}
+/* The chooser card's OWN state line (law 0.30: the selected card's state
+   renders on the card) — same classes the options grid speaks. */
+.transfer-chooser-state {
+  display: block;
+  font-size: 0.78rem;
+  margin-top: 4px;
+}
+.transfer-chooser-state-ok { color: var(--ok, #2e9e5b); }
+.transfer-chooser-state-err { color: var(--danger, #d64545); }
+.transfer-chooser-state-dim { color: var(--muted); }
+/* The form layer's header carries the card's status summary (0.30: one
+   click choose → configure, with the state riding the header). */
+.transfer-form-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 2px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.transfer-form-status { font-size: 0.8rem; font-weight: 600; }
+.transfer-form-status-ok { color: var(--ok, #2e9e5b); }
+.transfer-form-status-err { color: var(--danger, #d64545); }
+/* The manual zone's anchor flash (0.30: the click lands the eye WHERE the
+   configuration lives — the zone scrolls into view and pulses once). */
+@keyframes transfer-zone-flash-kf {
+  0% { box-shadow: 0 0 0 0 rgba(255, 191, 105, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 191, 105, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 191, 105, 0); }
+}
+.transfer-zone-flash {
+  animation: transfer-zone-flash-kf 1.4s ease-out 1;
+  border-radius: 10px;
+}
+
+/* ── R117 §4 — THE TWO DOORS (the CEO's S4): the audience-first lines
+   inside the transfer views. The chain door's line is bold with the chain
+   glyph; the other-door pointer is a quiet helper. ── */
+.transfer-audience { font-weight: 600; }
+
+/* ═══ R134 §2 — BEAM 2: THE AIRDROP STANDARD ═══
+   The identity line (0.54), the lane truth rows (0.55), the chain-verified
+   badge (0.54) — both themes from the same variable system. */
+.beam2-identity-line{font-size:12px;color:var(--muted,#71717a);border-top:1px dashed var(--border,#d4d4d8);padding-top:6px;margin-top:6px}
+.transfer-lane-truth{
+  display:inline-flex;align-items:center;gap:6px;margin:6px 0 0;
+  padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600;
+  border:1px solid var(--accent,#10b981);color:var(--accent,#10b981);
+  background:transparent;
+}
+.transfer-lane-truth.lane-degraded{
+  border-style:dashed;border-color:var(--warn,#eab308);color:var(--warn,#eab308);
+}
+.beam2-chain-badge{
+  display:inline-flex;align-items:center;margin-left:8px;padding:1px 8px;
+  border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.02em;
+  border:1px solid var(--accent,#10b981);color:var(--accent,#10b981);
+  background:transparent;
+}
+
+/* ═══ R136 §6 — THE BEAM 3 GUIDED WORKFLOW ═══ */
+.beam3-workflow { border-left: 3px solid var(--primary, #7c9cff); }
+.beam3-readiness { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.beam3-ready-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; font-size: 0.82rem; background: rgba(255,255,255,0.03); }
+.beam3-ready-row.ok { color: var(--success, #4ade80); }
+.beam3-ready-row.bad { color: var(--danger, #f87171); }
+.beam3-ready-mark { font-weight: 700; width: 1.1em; }
+.beam3-ready-fix { margin-left: auto; }
+.beam3-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.beam3-step { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px; border-radius: 8px; font-size: 0.84rem; }
+.beam3-step-state { font-size: 0.7rem; font-weight: 700; min-width: 3.4em; }
+.beam3-step-active { background: rgba(124,156,255,0.14); border: 1px solid rgba(124,156,255,0.4); font-weight: 600; }
+.beam3-step-active .beam3-step-state { color: var(--primary, #7c9cff); }
+.beam3-step-done { opacity: 0.66; }
+.beam3-step-done .beam3-step-state { color: var(--success, #4ade80); }
+.beam3-step-dimmed { opacity: 0.38; }
+
+/* ═══ R139 §5 — THE BOND (the ONE journey writer's surfaces) ═══
+   The same tokens, the same spacing, the same grammar as the sealed
+   canonical design (§10's canonical-UI protection: the new surfaces speak
+   the canonical language from birth). */
+.bond-journey .bond-readiness { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.bond-ready-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; font-size: 0.82rem; background: rgba(255,255,255,0.03); }
+.bond-ready-row.ok { color: var(--success, #4ade80); }
+.bond-ready-row.bad { color: var(--danger, #f87171); }
+.bond-ready-row.pend { color: var(--muted, #a1a1aa); }
+.bond-ready-mark { flex: none; font-weight: 700; width: 1.1em; text-align: center; }
+.bond-ready-fix { margin-left: auto; }
+.bond-avail-card {
+  margin-top: 8px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--border, #3f3f46);
+  background: rgba(255,255,255,0.02);
+}
+.bond-avail-head-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bond-avail-head-row h4 { margin: 0; font-size: 0.86rem; }
+.bond-avail-word { font-weight: 800; font-size: 0.8rem; letter-spacing: 0.02em; padding: 1px 10px; border-radius: 999px; border: 1px solid var(--border, #3f3f46); color: var(--muted, #a1a1aa); }
+.bond-avail-word.bond-avail-true { border-color: var(--success, #4ade80); color: var(--success, #4ade80); }
+.bond-avail-state-on { color: var(--success, #4ade80); }
+.bond-avail-state-off { color: var(--muted, #a1a1aa); }
+.bond-steps { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.bond-step { display: flex; align-items: baseline; gap: 8px; padding: 7px 10px; border-radius: 8px; font-size: 0.84rem; }
+.bond-step-state { flex: none; font-weight: 700; width: 1.2em; text-align: center; }
+.bond-step-done { color: var(--success, #4ade80); }
+.bond-step-active { color: var(--text, #e4e4e7); background: rgba(255,255,255,0.05); }
+.bond-step-pending { color: var(--muted, #a1a1aa); }
+.bond-step-label { background: none; border: none; color: inherit; font: inherit; text-align: left; padding: 0; cursor: pointer; }
+.bond-step-label:hover { text-decoration: underline; }
+.bond-deeplink:focus-visible { outline: 2px solid var(--accent, #10b981); outline-offset: 2px; border-radius: 4px; }
+.bond-flash { animation: bond-flash-kf 1.2s ease-out 1; border-radius: 8px; }
+@keyframes bond-flash-kf {
+  0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); }
+  70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+.bond-notice { margin: 8px 0 0; padding: 8px 12px; border-radius: 10px; font-size: 0.82rem; }
+.bond-notice-soft { border: 1px dashed var(--warn, #eab308); color: var(--warn, #eab308); background: transparent; }
+.bond-notice-terminal { border: 1px solid var(--danger, #f87171); color: var(--danger, #f87171); background: rgba(248, 113, 113, 0.06); }
+.bond-connect-reason { color: var(--muted, #a1a1aa); }
+.bond-fallback summary, .bond-drawer summary { cursor: pointer; font-weight: 600; }
+.bond-hops { list-style: none; margin: 8px 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.bond-hop { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 8px; font-size: 0.78rem; font-family: var(--mono, ui-monospace, monospace); }
+.bond-hop-done { color: var(--success, #4ade80); }
+.bond-hop-fail { color: var(--danger, #f87171); }
+.bond-hop-pend { color: var(--muted, #a1a1aa); }
+.bond-doctor-out:empty { display: none; }
