@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>UCrypt</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- QR generator loads as a plain script (globalThis.QR). Wordlists and
+       the breach set are LAZY since v2.21.0 (lib/corpus.js): the popup no
+       longer parses ~211 KB of static data on every open — they load on the
+       first generator/breach use instead. -->
+  <script src="lib/qr.js"></script>
+  <!-- R97: the clipboard secrecy guard (F-R96-1) and the QR scan adapter
+       (§4). The 27.4 KB vendored decoder is NOT loaded here — it lazy-loads
+       on the first scan (lib/qrscan.js), keeping the popup's hot path clean. -->
+  <script src="lib/clipguard.js"></script>
+  <script src="lib/qrscan.js"></script>
+  <!-- R109 §3.1 — the credential popup layer (law 0.24): one reusable modal
+       for every vault-passphrase confirm (the 0.24 popup contracts). -->
+  <script src="lib/credpopup.js"></script>
+</head>
+<body class="popup-body">
+  <main class="popup-main">
+
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="popup-logo">
+        <span class="popup-logo-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9.5 8 11 4.5-1.5 8-6 8-11V5l-8-3Z"/><path d="M9 12l2 2 4-4"/></svg>
+        </span>
+        <div class="popup-logo-text">
+          <h1>UCrypt</h1>
+          <p id="popupStatus">Vault locked</p>
+        </div>
+      </div>
+      <span class="popup-lock-dot" id="lockDot" aria-hidden="true" title="Locked" data-i18n-title="lockDotTitle"></span>
+      <!-- R79-B (owner screenshot 20261002_200402: "Where is the share file
+           feature?!"): a first-class, discoverable entry point for the
+           trusted direct device transfer — one click opens the transfer
+           window. No file ever leaves the device pair without the explicit
+           accept on the other device. -->
+      <!-- R117 §4.3 (the terminology law) — the CHAIN door never says
+           "share": this button opens the transfer window (your synced
+           devices), so its label names the chain audience. -->
+      <button type="button" id="shareWindowBtn" class="popup-settings-btn" data-i18n-title="shareWindowTitle" data-i18n-aria="shareWindowAria" aria-label="Send files to your devices" aria-haspopup="dialog">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </button>
+      <!-- R56-POPUP-WINDOW: settings open INTO a resizable window layer, not a page -->
+      <!-- R91 §3.5d (CEO S-F): the gear now opens the options page as a REAL
+           browser tab via chrome.runtime.openOptionsPage() — never a floating
+           layer. The title/aria say the action, plainly. -->
+      <button type="button" id="settingsWindowBtn" class="popup-settings-btn" data-i18n-title="settingsWindowTitle" data-i18n-aria="settingsWindowAria" aria-label="Open settings" aria-haspopup="dialog">⚙</button>
+      <!-- R91 §3.5a (CEO S-E, label-truth law): in the vault-window surface
+           the header carries an action-named "Close window" button. Hidden in
+           the toolbar popup (dismissing the popup IS closing it). -->
+      <button type="button" id="vaultWindowCloseBtn" class="popup-settings-btn hidden" data-i18n-title="vaultWindowCloseTitle" data-i18n-aria="vaultWindowCloseTitle" aria-label="Close window">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
+      </button>
+    </header>
+
+    <!-- First-run setup prompt -->
+    <section id="setupView" class="popup-card hidden" aria-live="polite">
+      <h2 class="popup-h2" data-i18n="setupTitle">Set up your master passphrase</h2>
+      <p class="popup-help" data-i18n="setupHelp">
+        Your master passphrase encrypts the vault. It is never sent anywhere —
+        not even to Google Drive. If you forget it, your stored passwords are
+        unrecoverable.
+      </p>
+      <div class="popup-pass-wrap">
+        <input type="password" id="setupPass" class="popup-input" placeholder="Master passphrase (min 8 chars)" autocomplete="new-password" data-i18n-placeholder="setupPassPlaceholder" />
+        <button type="button" id="setupEye" class="popup-pass-eye" aria-pressed="false" aria-label="Show passphrase" data-i18n-aria="pEyeShow" title="Show passphrase" data-i18n-title="pEyeShow">👁</button>
+      </div>
+      <div class="popup-pass-wrap">
+        <input type="password" id="setupPass2" class="popup-input" placeholder="Confirm passphrase" autocomplete="new-password" data-i18n-placeholder="setupPass2Placeholder" />
+        <button type="button" id="setupEye2" class="popup-pass-eye" aria-pressed="false" aria-label="Show passphrase" data-i18n-aria="pEyeShow" title="Show passphrase" data-i18n-title="pEyeShow">👁</button>
+      </div>
+      <button id="setupBtn" class="popup-btn popup-btn-primary" data-i18n="setupCreate">Create vault</button>
+      <!-- R100 (the CEO's "Take your stuff with you"): the Helium-style import
+           path is visible AT SETUP — create this device's vault, then pull
+           everything from the device you already use. -->
+      <button id="setupJoinBtn" class="popup-btn popup-btn-ghost" data-i18n="setupJoinBtn">Take your stuff with you — moving from another device?</button>
+      <!-- R101 §3 (the CEO's S3 wizard): the first-run MIGRATION entry — the
+           guided "what browsers honestly allow" flow in Settings → Data. -->
+      <button id="setupMigrateBtn" class="popup-btn popup-btn-ghost" data-i18n="setupMigrateBtn">Import bookmarks, history and passwords from another browser</button>
+      <p class="popup-help popup-help-subtle" data-i18n="setupJoinHelp">
+        Create this device's vault, then pull the encrypted backup from the
+        device you already use — the sync code (or the pairing QR) and the
+        same cloud storage bring everything over.
+      </p>
+      <p class="popup-help popup-help-subtle" data-i18n="setupNext">Next after this: connect a cloud drive with a 24-word sync code — 3 guided steps in Settings.</p>
+    </section>
+
+    <!-- R45-E: the explicit first-run choice (shown right after vault creation) -->
+    <section id="firstRunChoiceView" class="popup-card hidden" aria-live="polite">
+      <h2 class="popup-h2" data-i18n="frTitle">How should UCrypt handle new passwords?</h2>
+      <p class="popup-help" data-i18n="frHelp">
+        This is your choice, made explicitly — UCrypt never changes browser
+        settings on its own.
+      </p>
+      <button id="frUcryptOnly" class="popup-btn popup-btn-primary" data-i18n="frUcryptOnly">Use UCrypt only</button>
+      <p class="popup-help popup-help-subtle" data-i18n="frUcryptOnlyHelp">
+        UCrypt asks for the optional privacy permission and switches the
+        browser's save-password prompt off; UCrypt's own Save/Update prompt
+        takes over. UCrypt still cannot delete passwords the browser already
+        saved, and its autocomplete widget is the browser's own.
+      </p>
+      <button id="frAlongside" class="popup-btn popup-btn-outline" data-i18n="frAlongside">Use alongside the browser manager</button>
+      <p class="popup-help popup-help-subtle" data-i18n="frAlongsideHelp">
+        Browser save settings stay untouched. UCrypt saves and fills only
+        when you explicitly choose it — no dueling prompts.
+      </p>
+      <!-- R61-A §1.3 — first-run/onboarding Join route (the guided wizard
+           itself requires a local vault first; that ordering is enforced in
+           the manager, not assumed here). -->
+      <button id="frJoinChain" class="popup-btn popup-btn-ghost" data-i18n="frJoinChain">Join an existing sync chain…</button>
+      <p class="popup-help popup-help-subtle" data-i18n="frJoinChainHelp">
+        Already using UCrypt on another device? Join its chain here — you will
+        create this device's own vault first, then pull the encrypted backup
+        from your shared cloud storage.
+      </p>
+      <button id="frLater" class="popup-btn popup-btn-ghost" data-i18n="frLater">I'll decide later</button>
+    </section>
+
+    <!-- Locked view -->
+    <section id="lockedView" class="popup-card hidden" aria-live="polite">
+      <h2 class="popup-h2" data-i18n="unlockTitle">Unlock vault</h2>
+      <label class="popup-field-label" for="unlockPass" data-i18n="unlockLabel">Master passphrase</label>
+      <div class="popup-pass-wrap">
+        <input type="password" id="unlockPass" class="popup-input" placeholder="Master passphrase" autocomplete="current-password" data-i18n-placeholder="unlockPlaceholder" />
+        <button type="button" id="unlockEye" class="popup-pass-eye" aria-pressed="false" aria-label="Show passphrase" data-i18n-aria="pEyeShow" title="Show passphrase" data-i18n-title="pEyeShow">👁</button>
+      </div>
+      <button id="unlockBtn" class="popup-btn popup-btn-primary" data-i18n="unlockBtn">Unlock</button>
+      <p class="popup-help popup-help-subtle" id="unlockHelpLine" data-i18n="unlockHelp">600k PBKDF2 iterations + AES-256-GCM. Auto-locks after 10 idle minutes.</p>
+    </section>
+
+    <!-- Unlocked view (v2.3.0 — tabbed workbench) -->
+    <section id="unlockedView" class="popup-card hidden" aria-live="polite">
+
+      <!-- Tab bar -->
+      <nav class="popup-tabs" role="tablist" aria-label="UCrypt tools" data-i18n-aria="tabsAria">
+        <button class="popup-tab active" id="tabbtn-generate" role="tab" aria-selected="true" aria-controls="tab-generate" data-tab="generate">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+          <span data-i18n="tabGenerate">Generate</span>
+        </button>
+        <button class="popup-tab" id="tabbtn-vault" role="tab" aria-selected="false" aria-controls="tab-vault" data-tab="vault">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.5"/><path d="M12 10.5v1.5l1 .8"/></svg>
+          <span data-i18n="tabVault">Vault</span>
+        </button>
+        <button class="popup-tab" id="tabbtn-totp" role="tab" aria-selected="false" aria-controls="tab-totp" data-tab="totp">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <span data-i18n="tabTotp">2FA</span>
+        </button>
+        <button class="popup-tab" id="tabbtn-health" role="tab" aria-selected="false" aria-controls="tab-health" data-tab="health">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.3 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.8 0-3.4 1-4.5 2.5C10.9 4 9.3 3 7.5 3A5.5 5.5 0 0 0 2 8.5c0 2.2 1.5 4 3 5.5l7 7Z"/><path d="M8 11h2l1.5-3 2 5 1.5-2.5H17"/></svg>
+          <span data-i18n="tabHealth">Health</span>
+        </button>
+        <button class="popup-tab" id="tabbtn-sync" role="tab" aria-selected="false" aria-controls="tab-sync" data-tab="sync">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0-.4-8.98A6.5 6.5 0 0 0 4.4 12.6 3.8 3.8 0 0 0 6 19h11.5Z"/><path d="m9.5 13.5 2.5-2.5 2.5 2.5M12 11v6"/></svg>
+          <span data-i18n="tabSync">Sync</span>
+        </button>
+      </nav>
+
+      <!-- ═══ Tab: GENERATE ═══════════════════════════════════════════ -->
+      <div id="tab-generate" class="popup-panel active" role="tabpanel" aria-labelledby="tabbtn-generate">
+        <!-- Mode segmented control — R77-B (owner screenshot 20261002_131857):
+             the strip now WRAPS so all seven modes of the full Generator Lab
+             are VISIBLE at once (nothing hidden offscreen, no invisible
+             scrollbar); every mode runs the same canonical
+             generateSecret()/analyzer core as the manager. -->
+        <div class="popup-segmented" role="tablist" aria-label="Generator mode" data-i18n-aria="modeAria">
+          <button class="popup-seg active" data-mode="random" role="tab" id="seg-random" aria-selected="true" aria-controls="tab-generate" tabindex="0" data-i18n="segPassword">Password</button>
+          <button class="popup-seg" data-mode="passphrase" role="tab" id="seg-passphrase" aria-selected="false" aria-controls="tab-generate" tabindex="-1" data-i18n="segPassphrase">Passphrase</button>
+          <button class="popup-seg" data-mode="pin" role="tab" id="seg-pin" aria-selected="false" aria-controls="tab-generate" tabindex="-1" data-i18n="segPin">PIN</button>
+          <button class="popup-seg" data-mode="pronounceable" role="tab" id="seg-pronounceable" aria-selected="false" aria-controls="tab-generate" tabindex="-1" data-i18n="segPronounceable">Pronounceable</button>
+          <button class="popup-seg" data-mode="bulk" role="tab" id="seg-bulk" aria-selected="false" aria-controls="tab-generate" tabindex="-1" data-i18n="segBulk">Bulk</button>
+          <button class="popup-seg" data-mode="analyze" role="tab" id="seg-analyze" aria-selected="false" aria-controls="tab-generate" tabindex="-1" data-i18n="segAnalyze">Analyze</button>
+          <button class="popup-seg" data-mode="mnemonic" role="tab" id="seg-mnemonic" aria-selected="false" aria-controls="tab-generate" tabindex="-1" data-i18n="segMnemonic">Mnemonic</button>
+        </div>
+        <p id="modeStatus" class="sr-only" role="status" aria-live="polite"></p>
+
+        <!-- Presets (password mode only) -->
+        <div class="popup-presets" id="presetRow" aria-label="Presets" data-i18n-aria="presetsAria">
+          <button class="popup-chip" data-preset="banking" data-i18n="presetBanking">🏦 Banking</button>
+          <button class="popup-chip" data-preset="email" data-i18n="presetEmail">📧 Email</button>
+          <button class="popup-chip" data-preset="social" data-i18n="presetSocial">💬 Social</button>
+          <button class="popup-chip" data-preset="wifi" data-i18n="presetWifi">📶 WiFi</button>
+          <button class="popup-chip" data-preset="maximum" data-i18n="presetMaximum">🛡 Max</button>
+          <button class="popup-chip" data-preset="quick" data-i18n="presetQuick">⚡ Quick</button>
+        </div>
+
+        <!-- Options (collapsible) -->
+        <details class="popup-options" id="optionsBox">
+          <summary data-i18n="optionsSummary">Options</summary>
+
+          <!-- password options -->
+          <div id="opt-random" class="popup-optgroup">
+            <div class="popup-slider-row">
+              <label for="randLength" data-i18n="labelLength">Length</label>
+              <input type="range" id="randLength" min="8" max="64" step="1" value="20" />
+              <span class="popup-slider-val" id="randLengthVal">20</span>
+            </div>
+            <div class="popup-toggle-grid">
+              <label class="popup-toggle"><input type="checkbox" id="randLower" checked /><span>a-z</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="randUpper" checked /><span>A-Z</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="randNumbers" checked /><span>0-9</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="randSymbols" checked /><span>!@#</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="randExcludeAmbiguous" checked /><span>No lI1O0</span></label>
+              <!-- R56-GEN-POPUP-OPTIONS: restored from the v2.37.0–v2.38.0 popup
+                   (same ids as the manager Generator tab). The engine always
+                   supported these; the popup shape already preserved them —
+                   now they are visible/editable here too. -->
+              <label class="popup-toggle"><input type="checkbox" id="randNoDuplicates" /><span data-i18n="genNoDupShort" data-i18n-title="genNoDupTitle">No repeats</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="randNoSequences" /><span data-i18n="genNoSeqShort" data-i18n-title="genNoSeqTitle">No 123/abc</span></label>
+            </div>
+            <div class="popup-slider-row" style="margin-top:6px">
+              <label for="randExcludeChars" data-i18n="genExcludeShort" data-i18n-title="genExcludeTitle">Exclude</label>
+              <input type="text" id="randExcludeChars" class="popup-input popup-exclude-input" placeholder="chars to avoid" autocomplete="off" spellcheck="false" maxlength="64" aria-describedby="randExcludeHint" />
+            </div>
+            <p class="popup-help popup-help-subtle hidden" id="randExcludeHint" aria-live="polite"></p>
+          </div>
+
+          <!-- passphrase options -->
+          <div id="opt-passphrase" class="popup-optgroup hidden">
+            <div class="popup-slider-row">
+              <label for="ppWords" data-i18n="labelWords">Words</label>
+              <input type="range" id="ppWords" min="3" max="12" step="1" value="6" />
+              <span class="popup-slider-val" id="ppWordsVal">6</span>
+            </div>
+            <div class="popup-slider-row">
+              <label for="ppSeparator" data-i18n="labelSeparator">Separator</label>
+              <select id="ppSeparator" class="popup-select">
+                <option value="-" data-i18n="sepHyphen">hyphen  -</option>
+                <option value="_" data-i18n="sepUnderscore">underscore  _</option>
+                <option value="." data-i18n="sepDot">dot  .</option>
+                <option value=" " data-i18n="sepSpace">space</option>
+                <option value="" data-i18n="sepNone">none</option>
+                <option value="+" data-i18n="sepPlus">plus  +</option>
+                <option value="/" data-i18n="sepSlash">slash  /</option>
+              </select>
+            </div>
+            <div class="popup-slider-row">
+              <label for="ppWordlistSel" data-i18n="ppWordlistLabel">Wordlist</label>
+              <select id="ppWordlistSel" class="popup-select">
+                <option value="large" data-i18n="ppWlLarge">Large · max entropy</option>
+                <option value="short-1" data-i18n="ppWlShort1">Short #1</option>
+                <option value="short-2" data-i18n="ppWlShort2">Short #2</option>
+                <option value="custom" data-i18n="ppWlCustom">Custom (this device)</option>
+              </select>
+            </div>
+            <div class="popup-toggle-grid">
+              <label class="popup-toggle"><input type="checkbox" id="ppCapitalize" checked /><span data-i18n="ppCapitalize">Capitalize</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="ppAddNumber" checked /><span data-i18n="ppAddNumber">Number</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="ppAddSymbol" checked /><span data-i18n="ppAddSymbol">Symbol</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="ppPadBetween" /><span data-i18n="ppPadLabel">Pad between words</span></label>
+            </div>
+            <p class="popup-help popup-help-subtle" data-i18n="ppHelp">EFF large wordlist (7,776 words) · ~10.3 bits per word.</p>
+          </div>
+
+          <!-- pronounceable options (R72) -->
+          <div id="opt-pronounceable" class="popup-optgroup hidden">
+            <div class="popup-slider-row">
+              <label for="prSyl" data-i18n="prSyllablesLabel">Syllables</label>
+              <input type="range" id="prSyl" min="2" max="12" step="1" value="4" />
+              <span class="popup-slider-val" id="prSylVal">4</span>
+            </div>
+            <div class="popup-toggle-grid">
+              <label class="popup-toggle"><input type="checkbox" id="prCap" checked /><span data-i18n="ppCapitalize">Capitalize</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="prNum" checked /><span data-i18n="ppAddNumber">Number</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="prSym" checked /><span data-i18n="ppAddSymbol">Symbol</span></label>
+            </div>
+            <p class="popup-help popup-help-subtle" data-i18n="prHelp">Easier to type — may be less predictable than random passwords; use the shown entropy estimate.</p>
+          </div>
+
+          <!-- pin options -->
+          <div id="opt-pin" class="popup-optgroup hidden">
+            <div class="popup-slider-row">
+              <label for="pinLength" data-i18n="labelDigits">Digits</label>
+              <input type="range" id="pinLength" min="4" max="12" step="1" value="6" />
+              <span class="popup-slider-val" id="pinLengthVal">6</span>
+            </div>
+            <div class="popup-toggle-grid">
+              <label class="popup-toggle"><input type="checkbox" id="pinNoRepeats" checked /><span data-i18n="pinNoRepeats">No repeats</span></label>
+              <label class="popup-toggle"><input type="checkbox" id="pinNoSequences" checked /><span data-i18n="pinNoSequences">No 123/789</span></label>
+            </div>
+          </div>
+
+          <!-- bulk options (R74 — popup parity with the Generator Lab) -->
+          <div id="opt-bulk" class="popup-optgroup hidden">
+            <div class="popup-slider-row">
+              <label for="bulkCount" data-i18n="bulkCountLabel">How many (2–100)</label>
+              <input type="range" id="bulkCount" min="2" max="100" step="1" value="10" />
+              <span class="popup-slider-val" id="bulkCountVal">10</span>
+            </div>
+            <div class="popup-slider-row">
+              <label for="bulkMode" data-i18n="bulkModeLabel">Base mode</label>
+              <select id="bulkMode" class="popup-select">
+                <option value="random" data-i18n="segPassword">Password</option>
+                <option value="passphrase" data-i18n="segPassphrase">Passphrase</option>
+                <option value="pin" data-i18n="segPin">PIN</option>
+                <option value="pronounceable" data-i18n="segPronounceable">Pronounceable</option>
+              </select>
+            </div>
+            <p class="popup-help popup-help-subtle" data-i18n="bulkSessionHelp">Session only — nothing is saved anywhere until you export or copy.</p>
+          </div>
+
+          <!-- mnemonic options (R74 — same isolation contract as the Lab:
+               wallet-seed namespace, high-risk confirm, never saved) -->
+          <div id="opt-mnemonic" class="popup-optgroup hidden">
+            <!-- R95 F-95-04 (filed P4): keep the accurate tool name, add the
+                 one-line plain-language description of what it does. -->
+            <p class="popup-help popup-help-subtle" data-i18n="mnPlainLine">Creates a wallet recovery phrase (BIP-39) you write down on paper — NOT a login password.</p>
+            <div class="popup-slider-row">
+              <label for="mnWords" data-i18n="mnLengthLabel">Words</label>
+              <select id="mnWords" class="popup-select">
+                <option value="12">12</option>
+                <option value="15">15</option>
+                <option value="18">18</option>
+                <option value="21">21</option>
+                <option value="24">24</option>
+              </select>
+            </div>
+            <p class="popup-help popup-help-subtle" data-i18n="mnWarning">Wallet recovery phrase — anyone holding these words holds the funds. UCrypt never saves, syncs or logs them.</p>
+          </div>
+        </details>
+
+        <!-- Analyze panel (R74 — paste-any-secret analysis, auto-scrubbed) -->
+        <div id="analyzePanel" class="hidden">
+          <label class="popup-domain-label" for="anInput" data-i18n="anInputLabel">Paste a password or passphrase to analyze</label>
+          <textarea id="anInput" class="popup-input" rows="2" autocomplete="off" spellcheck="false" data-i18n-placeholder="anInputPlaceholder"></textarea>
+          <div class="popup-row-actions">
+            <button id="anBtn" class="popup-btn popup-btn-primary" data-i18n="anBtn">Analyze</button>
+          </div>
+          <div id="anResult" class="hidden popup-an-result">
+            <div class="popup-strength-bar"><div id="anStrength" class="popup-strength-fill" style="width:0"></div></div>
+            <div class="popup-row-between popup-meta-row">
+              <span id="anBits" class="popup-bits">— bits</span>
+              <span id="anCrack" class="popup-crack"></span>
+            </div>
+            <div id="anNotes" class="popup-help popup-help-subtle"></div>
+          </div>
+          <p class="popup-help popup-help-subtle" data-i18n="anScrubNote">Analyzed on this device only — the input is scrubbed when you leave this tab or lock the vault.</p>
+        </div>
+
+        <!-- Bulk result list (R74 — session-only, scrollable) -->
+        <div id="bulkListPanel" class="hidden">
+          <div id="bulkList" class="popup-bulk-list" role="list"></div>
+          <div class="popup-row-actions">
+            <button id="bulkCopyAllBtn" class="popup-btn popup-btn-outline" disabled data-i18n="bulkCopyAll">Copy all</button>
+            <button id="bulkDownloadBtn" class="popup-btn popup-btn-outline" disabled data-i18n="bulkDownload">Download .txt</button>
+            <button id="bulkClearBtn" class="popup-btn popup-btn-outline" disabled data-i18n="bulkClear">Clear</button>
+          </div>
+          <p class="popup-help popup-help-subtle" data-i18n="bulkPlaintextWarn">The .txt export is PLAINTEXT — anyone with the file holds every secret in it.</p>
+        </div>
+
+        <!-- Mnemonic check panel (R74 — validate an existing phrase) -->
+        <div id="mnCheckPanel" class="hidden">
+          <label class="popup-domain-label" for="mnCheckInput" data-i18n="mnCheckLabel">Validate an existing phrase</label>
+          <textarea id="mnCheckInput" class="popup-input" rows="2" autocomplete="off" spellcheck="false" data-i18n-placeholder="mnCheckPlaceholder"></textarea>
+          <div class="popup-row-actions">
+            <button id="mnCheckBtn" class="popup-btn popup-btn-outline" data-i18n="mnCheckBtn">Validate</button>
+          </div>
+          <p class="popup-help popup-help-subtle hidden" id="mnCheckOut" aria-live="polite"></p>
+        </div>
+
+        <!-- Output -->
+        <div class="popup-output" id="genOutput" aria-live="polite" data-i18n="genOutputHint">Click generate ↓</div>
+        <div class="popup-strength-bar"><div id="genStrength" class="popup-strength-fill" style="width:0"></div></div>
+        <div class="popup-row-between popup-meta-row">
+          <span id="genBits" class="popup-bits">— bits</span>
+          <span id="genCrack" class="popup-crack"></span>
+        </div>
+        <div class="popup-row-actions">
+          <button id="genBtn" class="popup-btn popup-btn-primary" data-i18n="genBtn">Generate</button>
+          <button id="copyBtn" class="popup-btn popup-btn-outline" disabled data-i18n="copyBtn">Copy</button>
+        </div>
+        <div class="popup-row-actions">
+          <button id="useBtn" class="popup-btn popup-btn-outline" disabled data-i18n="labUseBtn" title="Fill on this page's password field — never submits">Use on page</button>
+          <button id="saveGenEntryBtn" class="popup-btn popup-btn-outline" disabled data-i18n="labSaveBtn" title="Save to the encrypted vault">Save to UCrypt…</button>
+        </div>
+        <a id="openGenLab" class="popup-manage-link" href="#" data-i18n="openGenLab">Open the full Generator Lab →</a>
+      </div>
+
+      <!-- ═══ Tab: VAULT ══════════════════════════════════════════════ -->
+      <div id="tab-vault" class="popup-panel" role="tabpanel" aria-labelledby="tabbtn-vault" hidden>
+        <div class="sync-status-strip" id="popupVaultStatusStrip" role="group" aria-label="Vault protection status" style="margin:0 0 8px">
+          <span class="sync-chip" data-state="ok"><span class="sync-chip-dot ok" aria-hidden="true"></span><span>AES-256-GCM sealed</span></span>
+          <span class="sync-chip" data-state="ok"><span class="sync-chip-dot ok" aria-hidden="true"></span><span>Origin-strict autofill</span></span>
+        </div>
+        <div class="popup-row">
+          <div>
+            <div class="popup-domain-label" data-i18n="currentSiteLabel">Current site</div>
+            <div id="currentDomain" class="popup-domain">—</div>
+          </div>
+          <div class="popup-row" style="gap:6px; align-items:center;">
+            <button id="compactToggle" type="button" class="popup-btn popup-btn-mini" aria-pressed="false" title="Compact list" data-i18n-title="pCompactToggle" aria-label="Compact list" data-i18n-aria="pCompactToggle" style="font-size:12px; letter-spacing:1px;">≡</button>
+            <div class="popup-count">
+              <div id="entryCount">0</div>
+              <div class="popup-count-label" data-i18n="savedLabel">saved</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="popup-divider"></div>
+
+        <div id="siteEntries"></div>
+
+        <div class="popup-divider"></div>
+
+        <details class="popup-options" id="allEntriesBox">
+          <summary><span data-i18n="allEntriesLabel">All entries</span> (<span id="allCount">0</span>)</summary>
+          <input type="search" id="vaultFilter" class="popup-input popup-input-sm" placeholder="Filter domain / username…" data-i18n-placeholder="vaultFilterPlaceholder" />
+          <select id="vaultSort" class="popup-input popup-input-sm" aria-label="Sort entries" data-i18n-aria="sortAria">
+            <option value="site" data-i18n="sortSite">Site A–Z</option>
+            <option value="name" data-i18n="sortName">Username A–Z</option>
+            <option value="used" data-i18n="sortRecentUsed">Recently used</option>
+            <option value="changed" data-i18n="sortRecentChanged">Recently changed</option>
+          </select>
+          <div id="allEntries" class="popup-entry-list"></div>
+        </details>
+
+        <div class="popup-row-actions">
+          <button id="fillBtn" class="popup-btn popup-btn-outline" disabled data-i18n="fillBtn">Fill on this page</button>
+          <a id="openVault" class="popup-btn popup-btn-ghost" href="#" data-i18n="manageVault">Manage vault →</a>
+        </div>
+      </div>
+
+      <!-- ═══ Tab: 2FA (TOTP authenticator — v2.4.0) ══════════════════════ -->
+      <div id="tab-totp" class="popup-panel" role="tabpanel" aria-labelledby="tabbtn-totp" hidden>
+        <div class="popup-row-between popup-totp-head">
+          <div class="popup-domain-label"><span data-i18n="totpHeadLabel">Authenticator</span> · <span id="totpCount">0</span> token<span id="totpCountPlural">s</span></div>
+          <button id="totpAddToggle" class="popup-btn popup-btn-mini" aria-expanded="false" data-i18n="totpAdd">＋ Add</button>
+        </div>
+
+        <div id="totpList" class="popup-totp-list" aria-live="off"></div>
+
+        <!-- Add-token panel -->
+        <div id="totpAddBox" class="popup-totp-add hidden">
+          <div class="popup-domain-label" data-i18n="totpAddTitle">Add a token</div>
+          <label class="popup-field-label" for="totpUri" data-i18n="totpUriLabel">Paste the otpauth:// URI (what a QR code contains)</label>
+          <input type="text" id="totpUri" class="popup-input popup-input-sm" placeholder="otpauth://totp/GitHub:you@mail.com?secret=…" autocomplete="off" spellcheck="false" data-i18n-placeholder="totpUriPlaceholder" />
+          <!-- R97 §4: scan the QR code instead of transcribing it. The decoded
+               URI lands in THIS field — the live preview below validates it
+               before anything is saved. No silent writes, ever. -->
+          <div class="btn-row" style="margin-top:6px; gap:6px">
+            <button type="button" id="totpQrScanBtn" class="popup-btn popup-btn-mini" data-i18n="qrScanBtn" data-i18n-title="qrScanTitle" title="Decode a QR code from a pasted image or a file">Scan a QR image</button>
+            <input type="file" id="totpQrFile" accept="image/*" hidden aria-hidden="true" />
+          </div>
+          <div class="popup-totp-divider"><span data-i18n="totpOrManual">or enter manually</span></div>
+          <div class="popup-totp-grid">
+            <div>
+              <label class="popup-field-label" for="totpLabel" data-i18n="totpLabelLabel">Label</label>
+              <input type="text" id="totpLabel" class="popup-input popup-input-sm" placeholder="you@mail.com" autocomplete="off" />
+            </div>
+            <div>
+              <label class="popup-field-label" for="totpIssuer" data-i18n="totpIssuerLabel">Issuer (optional)</label>
+              <input type="text" id="totpIssuer" class="popup-input popup-input-sm" placeholder="GitHub" autocomplete="off" />
+            </div>
+          </div>
+          <label class="popup-field-label" for="totpSecret" data-i18n="totpSecretLabel">Secret (base32)</label>
+          <input type="text" id="totpSecret" class="popup-input popup-input-sm totp-mono" placeholder="JBSWY3DPEHPK3PXP" autocomplete="off" spellcheck="false" />
+          <div class="popup-totp-grid popup-totp-grid-3">
+            <div>
+              <label class="popup-field-label" for="totpDigits" data-i18n="totpDigitsLabel">Digits</label>
+              <select id="totpDigits" class="popup-select"><option value="6">6</option><option value="8">8</option></select>
+            </div>
+            <div>
+              <label class="popup-field-label" for="totpPeriod" data-i18n="totpPeriodLabel">Period</label>
+              <select id="totpPeriod"><option value="30">30 s</option><option value="60">60 s</option></select>
+            </div>
+            <div>
+              <label class="popup-field-label" for="totpAlgo" data-i18n="totpAlgoLabel">Algorithm</label>
+              <select id="totpAlgo"><option value="SHA-1">SHA-1</option><option value="SHA-256">SHA-256</option><option value="SHA-512">SHA-512</option></select>
+            </div>
+          </div>
+          <div id="totpPreview" class="popup-totp-preview hidden">
+            <span data-i18n="totpLivePreview">Live preview</span>
+            <strong id="totpPreviewCode" class="totp-mono"></strong>
+            <em id="totpPreviewMeta"></em>
+          </div>
+          <p id="totpAddError" class="popup-totp-error hidden" role="alert"></p>
+          <div class="popup-row-actions">
+            <button id="totpSaveBtn" class="popup-btn popup-btn-primary" data-i18n="totpSave">Save to vault</button>
+            <button id="totpCancelBtn" class="popup-btn popup-btn-ghost" data-i18n="totpCancel">Cancel</button>
+          </div>
+          <p class="popup-help popup-help-subtle" data-i18n="totpHelp">The secret is encrypted with your vault (AES-256-GCM) and syncs with it. Codes are computed on this device only.</p>
+        </div>
+
+        <p id="totpEmptyHint" class="popup-empty hidden" data-i18n="totpEmpty">No authenticator tokens yet. Add one by pasting the otpauth:// URI your service shows for authenticator apps.</p>
+      </div>
+
+      <!-- ═══ Tab: HEALTH (vault password health — v2.5.0) ══════════════════════ -->
+      <div id="tab-health" class="popup-panel" role="tabpanel" aria-labelledby="tabbtn-health" hidden>
+        <div class="sync-status-strip" id="popupHealthStatusStrip" role="group" aria-label="Health audit status" style="margin:0 0 8px">
+          <span class="sync-chip" data-state="ok"><span class="sync-chip-dot ok" aria-hidden="true"></span><span>100% offline audit</span></span>
+          <span class="sync-chip" data-state="ok"><span class="sync-chip-dot ok" aria-hidden="true"></span><span>10k breach corpus</span></span>
+        </div>
+        <div class="popup-row-between popup-totp-head">
+          <div class="popup-domain-label" data-i18n="healthTitle">Vault health report</div>
+          <!-- v2.9.0 — CSV export; R59-F5: the CSV/Re-run actions belong to the
+               FULL surface (vault window) — hidden in the toolbar summary. -->
+          <span class="popup-health-actions" id="healthActions">
+            <button id="healthExport" class="popup-btn popup-btn-mini" title="Download the report as CSV" data-i18n-title="healthCsvTitle">⬇ CSV</button>
+            <button id="healthRerun" class="popup-btn popup-btn-mini" data-i18n="healthRerun">↻ Re-run</button>
+          </span>
+        </div>
+        <div id="healthBody" aria-live="polite"></div>
+        <!-- R59-F5 — the compact popup carries the SUMMARY only; the full
+             report opens in the extension-controlled resizable vault window. -->
+        <button id="healthOpenFull" class="popup-btn popup-btn-primary hidden" data-i18n="pHealthOpenFull">Open full Health report</button>
+        <p class="popup-help popup-help-subtle" data-i18n="healthHelp">Analyzed on this device with the same engine as the generator: breach-list matches, weak entropy, reuse. Nothing ever leaves your browser.</p>
+      </div>
+
+      <!-- ═══ Tab: SYNC ═══════════════════════════════════════════════ -->
+      <div id="tab-sync" class="popup-panel" role="tabpanel" aria-labelledby="tabbtn-sync" hidden>
+        <!-- UCRYPT-27 — Unified Cloud Sync status callout + interactive pill strip in Popup -->
+        <div id="popupSyncHero" style="margin:0 0 8px">
+          <p class="sync-status" style="margin:0 0 6px;padding:7px 10px;font-size:11px">
+            <span class="text-muted">Chain state:</span>
+            <strong id="popupSyncHeroState">Checking sync chain…</strong>
+          </p>
+          <div class="sync-status-strip" id="popupSyncStatusStrip" role="group" aria-label="Popup sync status at a glance" style="margin:0">
+            <button class="sync-chip" id="popupSyncChipChain" data-state="off" type="button"><span class="sync-chip-dot" id="popupSyncDotChain" aria-hidden="true"></span><span id="popupSyncChipChainText">Sync chain</span></button>
+            <button class="sync-chip" id="popupSyncChipCloud" data-state="off" type="button"><span class="sync-chip-dot" id="popupSyncDotCloud" aria-hidden="true"></span><span id="popupSyncChipCloudText">Cloud transport</span></button>
+          </div>
+        </div>
+        <div class="popup-sync-rows">
+          <div class="popup-sync-row"><span data-i18n="syncEntriesLabel">Entries</span><strong id="syncEntries">0</strong></div>
+          <div class="popup-sync-row"><span data-i18n="syncLastLabel">Last modified</span><strong id="syncLast">—</strong></div>
+          <div class="popup-sync-row"><span data-i18n="syncCodeLabel">Sync code</span><strong id="syncCodeState">—</strong></div>
+          <div class="popup-sync-row"><span data-i18n="syncTransportLabel">Cloud transport</span><strong id="syncTransport">None</strong></div>
+          <div class="popup-sync-row"><span data-i18n="syncHopLabel">Built-in browser sync</span><strong id="syncHopState">—</strong></div>
+          <div class="popup-sync-row"><span data-i18n="syncPushLabel">Cloud push</span><strong id="syncPushState">—</strong></div>
+          <div class="popup-sync-row hidden" id="syncRetryRow" role="status" aria-live="polite"><span data-i18n="syncRetryLabel">Auto-sync retry</span><strong id="syncRetryState">—</strong></div>
+        </div>
+
+        <!-- F-R71-UI-1 (owner screenshot 20260929_165359): three flex:1 buttons
+             on one row overflowed the popup window with the long "Join existing
+             chain…" label. The actions now live on TWO rows — row 1: Sync now +
+             Set up sync…; row 2: Join existing chain… full-width, exactly the
+             owner-requested arrangement. -->
+        <div class="popup-row-actions">
+          <button id="syncBtn" class="popup-btn popup-btn-primary" data-i18n="syncNow">Sync now</button>
+          <button id="openSyncSetup" class="popup-btn popup-btn-outline" data-i18n="syncSetup">Set up sync…</button>
+        </div>
+        <!-- R61-A §1.3 — first-class Join route from the popup Sync tab. -->
+        <div class="popup-row-actions popup-row-actions-stacked">
+          <button id="openJoinChain" class="popup-btn popup-btn-outline" data-i18n="syncJoinChain">Join existing chain…</button>
+        </div>
+
+        <!-- R89 (Brave Rank 2, CEO-commanded): the chain-wide device roster.
+             Presence-derived and READ-ONLY — the transfer plane's existing
+             status projection is the ONLY source, so the one-blob trust model
+             gains no new envelope and no new sync surface. Every chain device
+             the worker knows renders with its TRUTHFUL availability state. -->
+        <hr class="divider" />
+        <div class="popup-nm-card" id="rosterCard" role="group" aria-labelledby="rosterTitle">
+          <div class="popup-nm-head">
+            <span class="popup-nm-title" id="rosterTitle" data-i18n="rosterTitle">Chain devices</span>
+            <button id="rosterRefresh" class="popup-btn popup-btn-tiny" data-i18n="rosterRefresh">Refresh</button>
+          </div>
+          <ul class="popup-nm-rows" id="rosterList"></ul>
+        </div>
+
+        <!-- R77-A (owner screenshot 20261002_132344): the dense ambiguous
+             paragraph is replaced by a compact state card. Rows 1–4 mirror the
+             ACTUAL stored device-local behavior prefs; the browser row is the
+             LITERAL post-set get()/levelOfControl truth — a failed or blocked
+             native setting can never render as "controlled by UCrypt".
+             Explanatory density lives behind the Details expander. -->
+        <hr class="divider" />
+        <div class="popup-nm-card" id="nmCard" role="group" aria-labelledby="nmCardTitle">
+          <div class="popup-nm-head">
+            <span class="popup-nm-title" id="nmCardTitle" data-i18n="nmCardTitle">UCrypt password manager</span>
+            <button id="nmToggle" class="popup-btn popup-btn-tiny" data-i18n="nmTurnOn">Turn on</button>
+          </div>
+          <ul class="popup-nm-rows">
+            <li><span data-i18n="nmRowSave">UCrypt save offers</span><strong id="nmRowSave" class="popup-nm-val">—</strong></li>
+            <li><span data-i18n="nmRowPicker">UCrypt website account picker</span><strong id="nmRowPicker" class="popup-nm-val">—</strong></li>
+            <li><span data-i18n="nmRowProfileFill">UCrypt profile fill offers</span><strong id="nmRowProfileFill" class="popup-nm-val">—</strong></li>
+            <li><span data-i18n="nmRowProfileSave">UCrypt profile save offers</span><strong id="nmRowProfileSave" class="popup-nm-val">—</strong></li>
+          </ul>
+          <div class="popup-nm-browser">
+            <span data-i18n="nmBrowserPrompt">Browser save prompt</span>
+            <strong id="nmBrowserState" class="popup-nm-val">—</strong>
+          </div>
+          <div class="popup-nm-browser">
+            <span data-i18n="nmBrowserAutofill">Browser Auto sign-in &amp; passkeys</span>
+            <strong class="popup-nm-val popup-nm-val-neutral" data-i18n="nmBrowserManaged">Managed by your browser</strong>
+          </div>
+          <p class="popup-nm-note" id="nmBrowserNote" role="status">Checking this browser’s stock autofill…</p>
+          <button id="nmReviewSettings" class="popup-nm-review" data-i18n="nmReview">Review browser password and passkey settings</button>
+          <details class="popup-nm-details" id="nmDetails">
+            <summary data-i18n="nmDetailsSummary">Details</summary>
+            <p class="popup-help popup-help-subtle" id="nmState" role="status">Checking the device sign-in prompt mode…</p>
+          </details>
+        </div>
+
+        <p class="popup-help popup-help-subtle" id="syncFlowHint" data-i18n="syncFlowHint">
+          Pushes happen on every change (save, edit, delete, import); pulls at
+          unlock, every 15 min, and on demand. Ciphertext only — the cloud
+          never sees a single password.
+        </p>
+        <p id="syncBadge" class="popup-sync-badge hidden"></p>
+      </div>
+    </section>
+
+    <!-- Always-available lock row (unlocked only) -->
+    <div id="lockRow" class="popup-lockrow hidden">
+      <button id="lockBtn" class="popup-btn popup-btn-tiny" data-i18n="lockNow">🔒 Lock now</button>
+      <!-- R95 F-95-01 (CEO finding, heuristic audit H1): the version rides the
+           lock row — machine-derived at init (chrome.runtime.getManifest), never
+           hardcoded (law 0.11). The slot the CEO marked in the R95 screenshot. -->
+      <span class="popup-lockrow-version" id="popupVersion" data-i18n-title="popupVersionTitle" title="UCrypt version">—</span>
+      <span class="popup-lockrow-hint" id="lockHint" data-i18n="lockHint">Auto-locks after 10 idle minutes</span>
+    </div>
+
+    <!-- Toast -->
+    <div id="popupToast" class="popup-toast hidden" role="status" aria-live="polite"><span id="popupToastText"></span><button id="popupToastClose" class="toast-close" type="button" aria-label="Dismiss notification">✕</button></div>
+  </main>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

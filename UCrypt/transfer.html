@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title data-i18n="jrPageTitle">UCrypt — Device Transfer</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .transfer-wrap {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 20px 18px 48px;
+    }
+    html.in-embed,
+    html.in-embed body {
+      background: transparent;
+      overflow-x: hidden;
+    }
+    html.in-embed .transfer-wrap {
+      max-width: none;
+      margin: 0;
+      padding: 0 0 16px;
+    }
+    .transfer-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    html.in-embed .transfer-topbar {
+      display: none;
+    }
+    .transfer-topbar h1 {
+      font-size: 18px;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .road-badge {
+      font-size: 11px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .road-badge[hidden] { display: none; }
+    .step-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 0 8px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .step-row:first-of-type {
+      border-top: 0;
+      padding-top: 4px;
+    }
+    .step-num {
+      display: inline-flex;
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+      background: rgba(34, 197, 94, 0.14);
+      border: 1px solid rgba(34, 197, 94, 0.35);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 11px;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+    }
+    .recipient-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+    .recipient-row select {
+      flex: 1 1 240px;
+      padding: 8px 10px;
+      background: var(--bg-input);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+    }
+    .code-panel {
+      margin: 12px 0;
+      padding: 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--accent);
+      background: var(--bg-input);
+      text-align: center;
+    }
+    .code-panel[hidden] { display: none; }
+    .safety-code {
+      font-family: var(--mono);
+      font-size: 26px;
+      letter-spacing: 6px;
+      font-weight: 700;
+      color: var(--accent);
+      margin: 6px 0;
+    }
+    .progress-wrap {
+      height: 8px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 8px 0 4px;
+    }
+    .progress-wrap[hidden] { display: none; }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--accent);
+      transition: width 120ms linear;
+    }
+    .journey-line {
+      margin: 10px 0 4px;
+      padding: 10px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+    }
+    .journey-line:empty { display: none; }
+    .offer-card {
+      padding: 12px;
+      margin: 8px 0;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .offer-card .from-line { font-weight: 600; margin-bottom: 4px; }
+    .offer-card .code-line { font-family: var(--mono); font-size: 15px; color: var(--accent); margin: 4px 0 8px; }
+    .qr-frames { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin: 8px 0; }
+    .qr-frame {
+      padding: 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      text-align: center;
+    }
+    .qr-frame .qr-img { background: #fff; padding: 6px; border-radius: 4px; display: inline-block; }
+    .qr-frame .qr-img.qr-img-fallback {
+      background: var(--bg-input);
+      color: var(--text);
+      padding: 10px 12px;
+      font-size: 12px;
+      max-width: 220px;
+    }
+    .diag-hop {
+      display: flex;
+      gap: 8px;
+      align-items: flex-start;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .diag-hop:last-child { border-bottom: 0; }
+    .diag-hop .glyph { font-weight: 700; min-width: 18px; }
+    .no-chain-box {
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg-input);
+      margin: 8px 0;
+    }
+    .no-chain-box[hidden] { display: none; }
+    .role-toggle {
+      margin: 6px 0 12px;
+      padding: 8px 12px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .role-toggle[hidden] { display: none; }
+    .words-box {
+      width: 100%;
+      font-family: var(--mono);
+      font-size: 12px;
+      padding: 8px;
+      background: var(--bg-card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .status-strip { margin-bottom: 14px; }
+    .status-list {
+      list-style: none;
+      padding: 0;
+      margin: 6px 0 8px;
+      font-size: 12.5px;
+    }
+    .status-list li {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+      padding: 3px 0;
+    }
+    .status-list .glyph {
+      font-weight: 700;
+      min-width: 16px;
+      color: var(--accent);
+    }
+    .why-details {
+      margin: 10px 0 0;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .why-details > summary {
+      cursor: pointer;
+      color: var(--text-dim);
+      font-weight: 500;
+      user-select: none;
+    }
+    .why-rows {
+      margin: 6px 0 2px;
+      padding: 8px 10px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .why-row {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+      padding: 2px 0;
+      font-size: 12px;
+    }
+    .why-row .glyph { font-weight: 700; min-width: 14px; }
+    .bond-fp {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 8px 10px;
+      margin: 6px 0 10px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+    }
+    .bond-fp code {
+      font-family: var(--mono);
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: var(--accent);
+    }
+    .bond-fp code.bond-fp-none {
+      font-family: inherit;
+      font-weight: 400;
+      color: var(--text-dim);
+    }
+    .bond-steps {
+      margin: 4px 0 10px;
+      padding-left: 20px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .bond-steps li { margin: 3px 0; }
+    .transfer-collapsible {
+      padding: 0;
+      overflow: hidden;
+    }
+    .transfer-collapsible > summary {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 18px;
+      cursor: pointer;
+      list-style: none;
+      font-weight: 600;
+      font-size: 15px;
+      color: var(--text);
+      user-select: none;
+    }
+    .transfer-collapsible > summary::-webkit-details-marker { display: none; }
+    .transfer-collapsible > summary::before {
+      content: '▸';
+      display: inline-block;
+      margin-right: 8px;
+      color: var(--text-dim);
+      transition: transform 140ms ease;
+    }
+    .transfer-collapsible[open] > summary::before {
+      transform: rotate(90deg);
+    }
+    .transfer-collapsible-body {
+      padding: 0 18px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .sync-chip-dot {
+      display: inline-block;
+      width: 7px !important;
+      height: 7px !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      border: 0 !important;
+      border-radius: 50% !important;
+      flex: 0 0 7px;
+      background: var(--text-dim);
+    }
+    .sync-chip-dot.ok {
+      background: var(--accent) !important;
+    }
+    .sync-chip-dot.warn {
+      background: #f59e0b !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="transfer-wrap">
+    <div class="transfer-topbar" id="mbHeader">
+      <h1>
+        <span data-i18n="jrHeading">Device Transfer</span>
+      </h1>
+    </div>
+
+    <!-- ═══ CLOUD-SYNC DEFAULT HERO CARD: DEVICE TRANSFER & CHAIN ROADS (UCRYPT-23) ═══ -->
+    <div class="card status-strip" id="mbStatusStrip" role="status" aria-live="polite">
+      <h2 data-i18n="mbHeroCardTitle">Device transfer &amp; chain roads</h2>
+      <p class="sync-status" id="mbHeroStatusBar">
+        <span data-i18n="mbRoadStateLabel">Road state:</span>
+        <strong id="mbHeaderStatus" style="color:var(--accent);" data-i18n="mbHeaderIdle">Direct is first — the cloud relay is ready</strong>
+        <span class="road-badge" id="mbRoadBadge" hidden></span>
+      </p>
+
+      <!-- Cloud-Sync unified status chip strip -->
+      <div class="sync-status-strip" id="mbRoadChipsStrip" role="group" aria-label="Device transfer status at a glance">
+        <button type="button" class="sync-chip" id="mbChipChain" title="Sync chain binding status">
+          <span class="sync-chip-dot ok" id="mbChipChainDot"></span>
+          <span id="mbChipChainText">Sync chain: active</span>
+        </button>
+        <button type="button" class="sync-chip" id="mbChipDirect" title="Direct peer-to-peer road status">
+          <span class="sync-chip-dot ok" id="mbChipDirectDot"></span>
+          <span id="mbChipDirectText">Direct road: ready</span>
+        </button>
+        <button type="button" class="sync-chip" id="mbChipCloud" title="Encrypted cloud relay status">
+          <span class="sync-chip-dot ok" id="mbChipCloudDot"></span>
+          <span id="mbChipCloudText">Cloud relay: connected</span>
+        </button>
+      </div>
+
+      <div class="btn-row" style="margin-top:10px;">
+        <button class="btn btn-primary btn-sm" id="mbQuickSendFocusBtn" type="button">Send a file</button>
+        <button class="btn btn-outline btn-sm" id="mbAddDevice" type="button" data-i18n="mbAddDeviceBtn" hidden>Pair a device</button>
+        <button class="btn btn-outline btn-sm" id="mbConnectCloud" type="button" data-i18n="mbConnectCloudBtn" hidden>Connect Cloud Sync</button>
+        <button class="btn btn-ghost btn-sm" id="mbQuickDoctorBtn" type="button">Connection doctor</button>
+      </div>
+      <p class="card-help" id="mbStatusHint" style="margin-top:8px;" data-i18n="mbStatusHintText">Cloud Sync is the automatic discovery &amp; encrypted relay — direct peer-to-peer and manual QR/word pairing work even when cloud is offline.</p>
+
+      <details class="why-details" id="mbWhyDetails">
+        <summary data-i18n="mbWhySummary">Road details &amp; chain diagnostics (Right now)</summary>
+        <ul class="status-list" id="mbStatusRows"></ul>
+        <div class="why-rows" id="mbWhyRows"></div>
+      </details>
+    </div>
+
+    <!-- Role collapse bar (§6.2) -->
+    <div class="role-toggle" id="jrRoleToggle" hidden>
+      <span id="jrRoleToggleText"></span>
+      <button class="btn btn-ghost btn-sm" id="jrReceiveToggle" type="button" data-i18n="jrShowOtherRole">Show</button>
+    </div>
+
+    <!-- ═══ PRIMARY CARD — SEND A FILE (Cloud Sync card style) ═══ -->
+    <div class="card" id="jrSendCard">
+      <h2 data-i18n="jrSendTitle">Send a file to one of your devices</h2>
+      <p class="card-help" data-i18n="jrSendSub">Your devices are your chain — pick one, choose a file, and the road is picked for you: direct when possible, through your cloud when needed. Always end-to-end encrypted.</p>
+
+      <div class="step-row">
+        <span class="step-num">1</span>
+        <strong data-i18n="jrStep1">Select recipient &amp; file</strong>
+      </div>
+      <div class="recipient-row">
+        <label for="jrRecipient" class="card-help" data-i18n="jrSendToLabel">Send to</label>
+        <select id="jrRecipient" aria-label="Send to"></select>
+      </div>
+      <p class="card-help" id="mbWarmLine" hidden></p>
+      <p class="card-help" id="mbRoadLedgerRow" hidden></p>
+
+      <div class="no-chain-box" id="jrNoChainBox" hidden>
+        <p class="card-help" id="jrNoChainText" data-i18n="jrNoChainText">Your devices are your chain. To add one, pair a device below — or let Cloud Sync find them automatically.</p>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" id="jrOpenSync" type="button" data-i18n="jrOpenSyncBtn">Open Cloud Sync</button>
+          <button class="btn btn-outline btn-sm" id="mbQuickPairInlineBtn" type="button">Pair a device</button>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-outline btn-sm" id="jrPickFile" type="button" data-i18n="jrPickFile">Choose a file…</button>
+        <span class="card-help" id="jrFileName"></span>
+      </div>
+      <input type="file" id="jrFileInput" multiple hidden>
+
+      <div class="step-row">
+        <span class="step-num">2</span>
+        <strong data-i18n="jrStep2">Send or answer an invitation</strong>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" id="jrSend" type="button" disabled data-i18n="jrSendBtn">Send</button>
+        <button class="btn btn-outline btn-sm" id="mbOpenRoadBtn" type="button" disabled data-i18n="mbOpenRoad">Open a road (bridge)</button>
+        <button class="btn btn-outline btn-sm" id="jrReceiveFirstClass" type="button" data-i18n="jrReceiveFirstClassBtn">Receive a file (paste words / scan QR)</button>
+        <button class="btn btn-ghost btn-sm" id="jrCancelSend" type="button" hidden data-i18n="jrCancelBtn">Cancel</button>
+      </div>
+
+      <!-- The beat line -->
+      <div class="journey-line" id="mbSendJourney" role="status" aria-live="polite"></div>
+      <p class="card-help" id="mbSendWhy"></p>
+      <div class="progress-wrap" id="jrProgressWrap" hidden><div class="progress-bar" id="jrProgressBar"></div></div>
+      <p class="card-help" id="jrProgressLine"></p>
+
+      <!-- THE ONE WORDS DOOR -->
+      <div id="mbQrDoor" hidden>
+        <p class="card-help" id="jrQrHelp" data-i18n="jrQrHelp">The cloud could not carry the handshake — show this QR (or copy the words) to your other device, then paste their reply below:</p>
+        <div class="qr-frames" id="mbQrFrames"></div>
+        <textarea class="words-box" id="mbQrWords" rows="2" readonly aria-label="Handshake words"></textarea>
+        <p class="card-help" id="jrAnswerState" role="status" aria-live="polite"></p>
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="btn btn-outline btn-sm" id="jrCopyWords" type="button" data-i18n="jrCopyWords">Copy words</button>
+        </div>
+        <label for="mbReplyInput" class="card-help" style="display:block;margin-top:8px;" data-i18n="jrReplyLabel">Paste the other device's words here (offer or reply — or read their QR image):</label>
+        <textarea class="words-box" id="mbReplyInput" rows="2"></textarea>
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="btn btn-primary btn-sm" id="mbReplySubmit" type="button" data-i18n="jrReplyConnect">Connect</button>
+          <button class="btn btn-outline btn-sm" id="mbReplyScan" type="button" data-i18n="jrReplyScan">Read QR image…</button>
+          <input type="file" id="jrQrFileInput" accept="image/*" hidden>
+        </div>
+      </div>
+
+      <!-- 6-digit safety code panel -->
+      <div class="code-panel" id="mbCodePanel" hidden>
+        <div class="card-help" data-i18n="jrCodeTitle">Step 3 — Compare this 6-digit code on both screens</div>
+        <div class="safety-code" id="mbSafetyCode">------</div>
+        <div class="card-help" id="mbCodeRole"></div>
+        <div class="btn-row" id="mbCodeActions" style="justify-content:center;margin-top:8px;" hidden>
+          <button class="btn btn-primary btn-sm" id="mbCodeMatch" type="button" data-i18n="jrCodeMatch">Codes match — receive file</button>
+          <button class="btn btn-ghost btn-sm" id="mbCodeMismatch" type="button" data-i18n="jrCodeMismatch">Codes do not match</button>
+        </div>
+      </div>
+
+      <!-- Receiver consent gate -->
+      <div class="code-panel" id="jrAcceptGate" hidden>
+        <div class="card-help" id="jrAcceptFrom"></div>
+        <div style="font-weight:700;font-size:15px;margin:4px 0;" id="jrAcceptFile"></div>
+        <div class="card-help" data-i18n="jrAcceptPrompt">Nothing is saved until you accept — the bytes wait in memory only.</div>
+        <div class="btn-row" style="justify-content:center;margin-top:8px;">
+          <button class="btn btn-primary btn-sm" id="jrAcceptYes" type="button" data-i18n="jrAcceptBtn">Accept &amp; save</button>
+          <button class="btn btn-ghost btn-sm" id="jrAcceptNo" type="button" data-i18n="jrDeclineBtn">Decline</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ ARRIVALS CARD — FILES WAITING FOR YOU ═══ -->
+    <div class="card" id="jrArrivalsCard">
+      <h2 data-i18n="jrArrivalsTitle">Files waiting for you</h2>
+      <p class="card-help" id="jrPollLine" data-i18n="jrPollIdle">Checking for incoming files every 60 s…</p>
+      <div id="jrDirectInList"></div>
+      <div id="jrOfferList"></div>
+      <div id="jrReceivedSlot"></div>
+      <div class="btn-row" style="margin-top:8px;">
+        <button class="btn btn-outline btn-sm" id="mbAnswerBridgeBtn" type="button" data-i18n="mbAnswerBridgeBtn">Answer a direct transfer (QR or words)</button>
+      </div>
+    </div>
+
+    <!-- ═══ COLLAPSIBLE CLOUD-SYNC STYLE CARDS BELOW ═══ -->
+
+    <!-- Pair a device (cloud-free direct bond) -->
+    <details class="card transfer-collapsible" id="mbBondDoor">
+      <summary>
+        <span data-i18n="mbBondTitle">Pair a device — direct, no cloud needed</span>
+        <span class="settled-hint card-help">Exchange a one-time QR or words invitation</span>
+      </summary>
+      <div class="transfer-collapsible-body">
+        <div class="bond-fp" id="mbBondFp">
+          <span class="card-help" data-i18n="mbBondFpLabel">Your chain code (must match on both devices):</span>
+          <code id="mbBondFpCode">—</code>
+          <button class="btn btn-ghost btn-sm" id="mbBondFpCopy" type="button" data-i18n="mbBondFpCopy">Copy code</button>
+        </div>
+        <p class="card-help" data-i18n="mbBondOnceNote">One-time per device pair — once both sides complete these three steps, the device stays in your list across restarts.</p>
+        <ol class="bond-steps" id="mbBondSteps" aria-label="The pairing ritual in three steps">
+          <li data-i18n="mbBondStep1">On Device A: press “Show my invitation” and send the QR or words to Device B.</li>
+          <li data-i18n="mbBondStep2">On Device B: paste Device A’s invitation below and press “Pair their reply” — Device B’s own invitation appears automatically; send it back to Device A.</li>
+          <li data-i18n="mbBondStep3">On Device A: paste Device B’s reply below and press “Pair their reply”. Both devices now list each other.</li>
+        </ol>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" id="mbBondShowBtn" type="button" data-i18n="mbBondShow">Show my invitation</button>
+          <button class="btn btn-outline btn-sm" id="mbBondCopyBtn" type="button" hidden data-i18n="mbBondCopy">Copy invitation</button>
+          <button class="btn btn-ghost btn-sm" id="mbBondCloseBtn" type="button" data-i18n="mbBondClose">Close</button>
+        </div>
+        <div class="qr-frames" id="mbBondFrames" hidden></div>
+        <textarea class="words-box" id="mbBondWords" rows="2" readonly hidden></textarea>
+        <label for="mbBondReply" class="card-help" style="display:block;margin-top:8px;" data-i18n="mbBondReplyLabel">Paste the other device's invitation or reply here (or read their QR image):</label>
+        <textarea class="words-box" id="mbBondReply" rows="2" placeholder="Paste their reply words here — or read their QR image."></textarea>
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="btn btn-primary btn-sm" id="mbBondLearnBtn" type="button" data-i18n="mbBondLearn">Pair their reply</button>
+          <button class="btn btn-outline btn-sm" id="mbBondScanBtn" type="button" data-i18n="mbBondScan">Read QR image…</button>
+          <input type="file" id="mbBondFileInput" accept="image/*" hidden>
+        </div>
+        <p class="card-help" id="mbBondState"></p>
+      </div>
+    </details>
+
+    <!-- Manual file bridge (.ucrypt-offer) -->
+    <details class="card transfer-collapsible" id="jrFallback">
+      <summary>
+        <span data-i18n="jrFallbackSummary">Manual bridge (.ucrypt-offer) — move an encrypted file by USB, email, or chat</span>
+        <span class="settled-hint card-help">Offline sealed package</span>
+      </summary>
+      <div class="transfer-collapsible-body">
+        <p class="card-help" data-i18n="jrFallbackHelp">When neither direct nor cloud is reachable, export an encrypted .ucrypt-offer file, carry it any way you like, and import it on the other device.</p>
+        <div class="btn-row">
+          <button class="btn btn-outline btn-sm" id="jrExportOffer" type="button" data-i18n="jrExportBtn">Export encrypted file…</button>
+          <button class="btn btn-outline btn-sm" id="jrImportOffer" type="button" data-i18n="jrImportBtn">Import encrypted file…</button>
+        </div>
+        <p class="card-help" id="jrFallbackState"></p>
+      </div>
+    </details>
+
+    <!-- Connection doctor -->
+    <details class="card transfer-collapsible" id="jrDiagnostics">
+      <summary>
+        <span data-i18n="jrDoctorSummary">Connection doctor — check every hop</span>
+        <span class="settled-hint card-help">Verify chain, direct &amp; cloud hops</span>
+      </summary>
+      <div class="transfer-collapsible-body">
+        <div class="btn-row" style="margin-top:6px;">
+          <button class="btn btn-outline btn-sm" id="jrRunDoctor" type="button" data-i18n="jrRunDoctor">Run connection doctor</button>
+        </div>
+        <div id="mbDoctorRows" style="margin-top:8px;"></div>
+      </div>
+    </details>
+
+    <!-- Recent transfers -->
+    <details class="card transfer-collapsible" id="jrHistory">
+      <summary>
+        <span data-i18n="jrHistorySummary">Recent transfers (last 7 days)</span>
+        <span class="settled-hint card-help">Verified arrivals &amp; receipts</span>
+      </summary>
+      <div class="transfer-collapsible-body">
+        <div id="jrHistoryRows" style="margin-top:6px;"></div>
+      </div>
+    </details>
+
+    <!-- How it works guide -->
+    <details class="card transfer-collapsible" id="jrGuide">
+      <summary>
+        <span data-i18n="jrGuideSummary">How Device Transfer works — three roads, one safety check</span>
+        <span class="settled-hint card-help">Architecture &amp; security</span>
+      </summary>
+      <div class="transfer-collapsible-body">
+        <p class="card-help" data-i18n="jrGuide1">1. Direct first — when both devices can reach each other on the network, the file moves straight between them.</p>
+        <p class="card-help" data-i18n="jrGuide2">2. Cloud relay when direct cannot connect — if a firewall blocks the direct road, UCrypt sends the encrypted package through your own cloud automatically.</p>
+        <p class="card-help" data-i18n="jrGuide3">3. Compare the 6-digit code — both screens show the same short code before a direct transfer starts.</p>
+      </div>
+    </details>
+  </div>
+
+  <script>
+    (function () {
+      try {
+        if (window.self !== window.top || new URLSearchParams(location.search).get('embed') === '1') {
+          document.documentElement.classList.add('in-embed');
+        }
+        var parentTheme = (window.parent && window.parent !== window && window.parent.document && window.parent.document.documentElement)
+          ? window.parent.document.documentElement.getAttribute('data-theme')
+          : null;
+        if (parentTheme === 'dark' || parentTheme === 'light') {
+          document.documentElement.setAttribute('data-theme', parentTheme);
+        } else if (!document.documentElement.getAttribute('data-theme')) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      } catch (_) {
+        document.documentElement.classList.add('in-embed');
+        if (!document.documentElement.getAttribute('data-theme')) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      }
+    })();
+  </script>
+  <script src="lib/qr.js"></script>
+  <script type="module" src="lib/transfer/journey.js"></script>
+  <script type="module" src="lib/mailbox/page.js"></script>
+</body>
+</html>
