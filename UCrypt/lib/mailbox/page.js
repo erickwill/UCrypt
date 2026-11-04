@@ -21,6 +21,7 @@
  */
 
 import { bootTheme } from '../theme.js'
+import * as SettledHouse from '../settled-house.js'
 import { rosterProjection, emptyRosterTeaching, PRESENCE_TTL_MS } from '../bridge/presence-lite.js'
 import { buildDoctorRows, doctorVerdict } from '../bridge/doctor2.js'
 import { noRoadTruth, roadLabel } from '../bridge/session.js'
@@ -33,6 +34,96 @@ import {
   directSend, directReceive, confirmCode, submitReplyBundle, importQrImage,
   cancelSession, setRoadBadge, startFromIncomingBundle,
 } from '../bridge/page.js'
+
+// UCRYPT-28: MV3 CSP-compliant embed & parent theme synchronization + standalone web preview shim
+;(function initTransferSurfaceAndPreviewShim() {
+  if (typeof document !== 'undefined' && document.documentElement) {
+    try {
+      const isEmbed = (typeof window !== 'undefined' && window.self !== window.top) ||
+        (typeof location !== 'undefined' && new URLSearchParams(location.search).get('embed') === '1')
+      if (isEmbed) {
+        document.documentElement.classList.add('in-embed')
+        document.documentElement.classList.remove('is-standalone-transfer')
+      } else {
+        document.documentElement.classList.remove('in-embed')
+        document.documentElement.classList.add('is-standalone-transfer')
+      }
+      const syncParentTheme = () => {
+        try {
+          if (window.parent && window.parent !== window && window.parent.document && window.parent.document.documentElement) {
+            const pt = window.parent.document.documentElement.getAttribute('data-theme')
+            if (pt === 'dark' || pt === 'light') {
+              document.documentElement.setAttribute('data-theme', pt)
+            }
+          }
+        } catch { /* cross-origin safe */ }
+      }
+      syncParentTheme()
+      if (window.parent && window.parent !== window && window.parent.document && window.parent.document.documentElement && typeof MutationObserver === 'function') {
+        const obs = new MutationObserver(syncParentTheme)
+        obs.observe(window.parent.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+      }
+    } catch {
+      document.documentElement.classList.add('in-embed')
+    }
+  }
+  const g = typeof globalThis !== 'undefined' ? globalThis : window
+  if (g.chrome && g.chrome.storage && g.chrome.storage.local) return
+  const mem = {}
+  const readStore = () => {
+    try { return JSON.parse(localStorage.getItem('__ucrypt_preview_store__') || '{}') } catch { return mem }
+  }
+  const writeStore = (obj) => {
+    try { localStorage.setItem('__ucrypt_preview_store__', JSON.stringify(obj)) } catch { Object.assign(mem, obj) }
+  }
+  const storageArea = {
+    get(keys, cb) {
+      const all = readStore()
+      let res = {}
+      if (!keys) res = { ...all }
+      else if (typeof keys === 'string') { if (keys in all) res[keys] = all[keys] }
+      else if (Array.isArray(keys)) { for (const k of keys) if (k in all) res[k] = all[k] }
+      else if (typeof keys === 'object') { res = { ...keys }; for (const k of Object.keys(keys)) if (k in all) res[k] = all[k] }
+      if (typeof cb === 'function') cb(res)
+      return Promise.resolve(res)
+    },
+    set(items, cb) {
+      const all = readStore()
+      Object.assign(all, items || {})
+      writeStore(all)
+      if (typeof cb === 'function') cb()
+      return Promise.resolve()
+    },
+    remove(keys, cb) {
+      const all = readStore()
+      const list = Array.isArray(keys) ? keys : [keys]
+      for (const k of list) delete all[k]
+      writeStore(all)
+      if (typeof cb === 'function') cb()
+      return Promise.resolve()
+    },
+  }
+  g.chrome = {
+    ...(g.chrome || {}),
+    i18n: (g.chrome && g.chrome.i18n) || { getMessage: () => '' },
+    storage: { local: storageArea, session: storageArea, onChanged: { addListener() {}, removeListener() {} } },
+    runtime: {
+      id: 'ucrypt-standalone-preview',
+      lastError: null,
+      getManifest: () => ({ version: '3.46.0', name: 'UCrypt' }),
+      getURL: (p) => p,
+      onMessage: { addListener() {}, removeListener() {} },
+      sendMessage: (msgPayload, cb) => {
+        const t = msgPayload && msgPayload.type
+        let reply = { ok: true, status: { connected: false, unlocked: true }, chain: { bound: true, fingerprint: 'A9F4-7C2E-11B0' }, peers: [], offers: [], signals: [], journeys: [], unlocked: true, chainReady: true, readiness: 'ready', deviceId: 'preview-self' }
+        if (typeof cb === 'function') cb(reply)
+        return Promise.resolve(reply)
+      },
+      openOptionsPage: () => {},
+    },
+    tabs: { create: () => Promise.resolve({}), query: (_q, cb) => { if (cb) cb([]); return Promise.resolve([]) } },
+  }
+})()
 
 const $ = (id) => document.getElementById(id)
 
@@ -839,7 +930,8 @@ async function importOffer() {
 /* ── THE DOCTOR v2 (five plain-word hops, each with its ONE action) ──────── */
 
 async function runDoctor() {
-  const rows = $('mbDoctorRows')
+  const rows = $('jrDoctorRows') || $('mbDoctorRows')
+  if (!rows) return
   rows.textContent = ''
   const pending = document.createElement('p')
   pending.className = 'card-help'
@@ -991,6 +1083,8 @@ async function boot() {
   // THE THEME LAW (§6): the iframe resolves the SAME persisted preference as
   // its host and watches for the toggle — the mixed-theme class is dead.
   try { await bootTheme({ storage: chrome.storage }) } catch { /* the fallback stands */ }
+  // UCRYPT-28: Apply Settled-House disclosure state to Device Transfer collapsible cards
+  try { SettledHouse.applyAll(document) } catch { /* best-effort */ }
   // i18n pass over the static data-i18n surfaces (the ONE writer for each)
   for (const el of document.querySelectorAll('[data-i18n]')) {
     const t = msg(el.getAttribute('data-i18n'), undefined, el.textContent)
@@ -1247,6 +1341,7 @@ async function boot() {
         const mo = new MutationObserver(postHeight)
         mo.observe(document.body, { childList: true, subtree: true, attributes: true })
       }
+      document.addEventListener('toggle', postHeight, true)
     }
   } catch { /* best-effort */ }
 }

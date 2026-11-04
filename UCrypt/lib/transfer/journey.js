@@ -367,10 +367,10 @@ async function renderArrivalsList() {
 /* ── the ONE writer per surface ──────────────────────────────────────────── */
 
 function renderJourneyLine(line) { const el = $('mbSendJourney'); if (el) el.textContent = line || '' }
-function renderProgressLine(line) { const el = $('mbDirectProgress'); if (el) el.textContent = line || '' }
+function renderProgressLine(line) { const el = $('mbDirectProgress') || $('jrProgressLine'); if (el) el.textContent = line || '' }
 function renderProgressBar(percent) {
-  const track = $('jrProgressTrack')
-  const fill = $('jrProgressFill')
+  const track = $('jrProgressTrack') || $('jrProgressWrap')
+  const fill = $('jrProgressFill') || $('jrProgressBar')
   if (!track || !fill) return
   if (percent == null) { track.hidden = true; fill.style.width = '0%'; return }
   track.hidden = false
@@ -639,10 +639,14 @@ function codePanelAdapter() {
       const panel = $('mbCodePanel')
       if (!panel) return
       panel.hidden = false
-      $('mbCodeShown').textContent = formatSafetyCodeLocal(code)
-      $('mbCodeRole').textContent = role === 'receiver'
-        ? msg('mbCodeRecvRole', undefined, 'Compare this code with the sender\u2019s screen. The file moves only after you confirm.')
-        : msg('mbCodeSendRole', undefined, 'Show this code to the other device. The file moves only when they confirm the match.')
+      const codeEl = $('mbCodeShown') || $('mbSafetyCode')
+      if (codeEl) codeEl.textContent = formatSafetyCodeLocal(code)
+      const roleEl = $('mbCodeRole')
+      if (roleEl) {
+        roleEl.textContent = role === 'receiver'
+          ? msg('mbCodeRecvRole', undefined, 'Compare this code with the sender\u2019s screen. The file moves only after you confirm.')
+          : msg('mbCodeSendRole', undefined, 'Show this code to the other device. The file moves only when they confirm the match.')
+      }
     },
     hide() {
       const panel = $('mbCodePanel')
@@ -693,7 +697,7 @@ async function renderRoster() {
   const verdict = rosterVerdict({ ok: !!r.ok, unlocked: r.unlocked, chainReady: r.chainReady, readiness: r.readiness || '', peers: r.peers })
   const step = verdictNextStep(verdict)
   sel.textContent = ''
-  const emptyRow = $('jrEmptyChainRow')
+  const emptyRow = $('jrEmptyChainRow') || $('jrNoChainBox')
   const sendRow = $('jrSendRow')
   if (emptyRow) emptyRow.hidden = verdict === 'ready'
   if (sendRow) sendRow.hidden = verdict !== 'ready'
@@ -1044,7 +1048,7 @@ async function onReceiverMismatch() {
 /* ── the doctor (v2 + the canonical roster truth) and the history ───────── */
 
 async function runDoctor() {
-  const rows = $('jrDoctorRows')
+  const rows = $('jrDoctorRows') || $('mbDoctorRows')
   if (!rows) return
   rows.textContent = ''
   const pending = document.createElement('p')
