@@ -36,14 +36,14 @@ Commercial use needs a separate license from the author (erickwill@gmail.com).
 The source tree on main mirrors the sealed release. The sealed tarball is the artifact —
 verify it before use:
 
-- Version: v3.45.0 (R181)
-- Built: SOON
-- sha256: SOON
+- Version: v3.48.0
+- Built: ucrypt-extension-v3.48.0-hardened.tar.gz
+- sha256: a7ed9aa85827c3db96e40e83dc552ed51f1871f0130d079762ece89f7f945bfd
 
 Verify it:
 
 ```
-sha256sum ucrypt-extension-v3.45.0.tar.gz
+sha256sum ucrypt-extension-v3.48.0.tar.gz
 ```
 
 The output must match the digest above.
