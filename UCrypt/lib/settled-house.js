@@ -82,11 +82,24 @@ export const DEFAULTS = Object.freeze({
   'vault-autofill-guide': false,
   // Direct Share tab: Sender and Receiver cards stay expanded; history ledger collapses.
   'ds-ledger': false,
+  // Generator Lab tab: Hero card, Mode Controls card, and Output card stay expanded; Session History collapses unless enabled.
+  'gen-session-history': false,
+  // Wordlists tab: Hero card and Custom Wordlist Builder stay expanded; Diceware Entropy Guide collapses.
+  'wl-guide': false,
   // Export/Import tab: primary backup & migration cards stay expanded; secondary utilities collapse.
+  'data-csv-export': false,
+  'data-receipts': false,
   'data-coherence': false,
   'data-diagnostics': false,
   'data-bookmarks-restore': false,
   'data-xb-import': false,
+  // Device Transfer tab (transfer.html): hero status card, Send card, and Arrivals card stay expanded;
+  // secondary pairing, manual bridge, connection doctor, recent transfers, and guide collapse cleanly.
+  'transfer-pair-device': false,
+  'transfer-manual-bridge': false,
+  'transfer-doctor': false,
+  'transfer-history': false,
+  'transfer-guide': false,
 })
 
 let cache = null
@@ -131,14 +144,21 @@ export const SettledHouse = {
     const map = await readStore()
     const def = defaultOpen !== null ? !!defaultOpen : !!DEFAULTS[areaId]
     const stored = map[areaId]
-    const open = (typeof stored === 'boolean') ? stored : def
+    // UCRYPT-32: 'conflict-resolver' must always load collapsed on page boot
+    // unless there is an active conflict that explicitly triggered reveal().
+    const isConflictResolver = areaId === 'conflict-resolver'
+    const open = isConflictResolver
+      ? (detailsEl.getAttribute('data-fire-revealed') === 'true' || def)
+      : ((typeof stored === 'boolean') ? stored : def)
     try { detailsEl.open = open } catch { /* a detached node still carries the attribute */ }
     if (open) detailsEl.setAttribute('open', '')
     else detailsEl.removeAttribute('open')
     if (!detailsEl.dataset.settledWired) {
       detailsEl.dataset.settledWired = '1'
       detailsEl.addEventListener('toggle', () => {
-        // the user's choice persists per area across sessions (R-170.1)
+        // the user's choice persists per area across sessions (R-170.1),
+        // except 'conflict-resolver' which always starts collapsed on page load unless a conflict is active.
+        if (isConflictResolver) return
         try {
           readStore().then((m) => {
             m[areaId] = !!detailsEl.open

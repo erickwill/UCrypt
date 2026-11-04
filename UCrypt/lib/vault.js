@@ -6273,6 +6273,8 @@ export async function getVaultConflictStatus() {
   const { [VAULT_CONFLICT_KEY]: stored } = await chrome.storage.local.get(VAULT_CONFLICT_KEY)
   const currentLocalHash = isUnlocked && vaultData ? await computeVaultHash(vaultData) : null
   const currentLocalCount = isUnlocked && vaultData && Array.isArray(vaultData.entries) ? vaultData.entries.length : 0
+  const currentLocalTombstoneCount = isUnlocked && vaultData && Array.isArray(vaultData.tombstones) ? vaultData.tombstones.length : 0
+  const currentLocalLastModified = isUnlocked && vaultData ? (Number(vaultData.lastModified) || 0) : 0
   const canResolveSnapshot = !!(
     _pendingConflictSnapshots ||
     (stored && (stored.sealedLocal || stored.sealedRemote))
@@ -6289,16 +6291,19 @@ export async function getVaultConflictStatus() {
   return {
     ok: true,
     isUnlocked: !!isUnlocked,
+    canResolve: !!isUnlocked,
     policy,
     rawPolicy,
     currentLocalHash,
     currentLocalCount,
+    currentLocalTombstoneCount,
+    currentLocalLastModified,
     canResolveSnapshot,
     conflict: stored
       ? {
           status: stored.status || 'clean',
           active: isActive,
-          canResolve: !!(canResolveSnapshot || isActive || stored.hasHashMismatch),
+          canResolve: !!(isUnlocked || canResolveSnapshot || isActive || stored.hasHashMismatch),
           paused: !!stored.paused,
           hasHashMismatch: !!stored.hasHashMismatch,
           hashMismatch: !!stored.hasHashMismatch,
@@ -6310,19 +6315,19 @@ export async function getVaultConflictStatus() {
           detectedAt: stored.detectedAt || 0,
           transportId: stored.transportId || null,
           localHash: stored.localHash || currentLocalHash || '',
-          remoteHash: stored.remoteHash || '',
-          mergedHash: stored.mergedHash || '',
+          remoteHash: stored.remoteHash !== undefined ? stored.remoteHash : (currentLocalHash || ''),
+          mergedHash: stored.mergedHash || currentLocalHash || '',
           localBytes: Number(stored.localBytes) || 0,
           remoteBytes: Number(stored.remoteBytes) || 0,
           mergedBytes: Number(stored.mergedBytes) || 0,
-          localEntryCount: Number(stored.localEntryCount) || 0,
-          remoteEntryCount: Number(stored.remoteEntryCount) || 0,
-          mergedEntryCount: Number(stored.mergedEntryCount) || 0,
-          localTombstoneCount: Number(stored.localTombstoneCount) || 0,
+          localEntryCount: stored.localEntryCount !== undefined ? Number(stored.localEntryCount) : currentLocalCount,
+          remoteEntryCount: stored.remoteEntryCount !== undefined ? Number(stored.remoteEntryCount) : currentLocalCount,
+          mergedEntryCount: stored.mergedEntryCount !== undefined ? Number(stored.mergedEntryCount) : currentLocalCount,
+          localTombstoneCount: stored.localTombstoneCount !== undefined ? Number(stored.localTombstoneCount) : currentLocalTombstoneCount,
           remoteTombstoneCount: Number(stored.remoteTombstoneCount) || 0,
-          localLastModified: Number(stored.localLastModified) || 0,
+          localLastModified: Number(stored.localLastModified) || currentLocalLastModified,
           remoteLastModified: Number(stored.remoteLastModified) || 0,
-          localUpdatedAt: Number(stored.localUpdatedAt || stored.localLastModified) || 0,
+          localUpdatedAt: Number(stored.localUpdatedAt || stored.localLastModified) || currentLocalLastModified,
           remoteUpdatedAt: Number(stored.remoteUpdatedAt || stored.remoteLastModified) || 0,
           conflictCount: Number(stored.conflictCount) || 0,
           diffCount: diffEntries.length,
@@ -6334,6 +6339,7 @@ export async function getVaultConflictStatus() {
           resolvedAt: stored.resolvedAt || null,
           resolvedChoice: stored.resolvedChoice || null,
           winningHash: stored.winningHash || null,
+          deletedCloud: !!stored.deletedCloud,
         }
       : null,
   }
@@ -6342,14 +6348,27 @@ export async function getVaultConflictStatus() {
 /**
  * Live-check local vs. cloud vault hashes right now from the Conflict Resolver
  * UI. If a hash mismatch is found, pauses before overwriting so the user can
- * inspect the side-by-side comparison and manually choose Local, Cloud, or Merge.
+ * inspect the side-by-side comparison and manually choose Local, Cloud, Merge,
+ * or Delete Cloud Vault Copy.
  */
 export async function checkVaultConflictNow() {
   if (!isUnlocked) {
     return { ok: false, locked: true, error: 'Unlock the vault first to compare local and cloud vault hashes' }
   }
   const pull = await withSyncLock(() => _pullCore({ pauseOnHashMismatch: true }))
-  const status = await getVaultConflictStatus()
+  let status = await getVaultConflictStatus()
+  if (!status.conflict && vaultData) {
+    const localSnap = JSON.parse(JSON.stringify(vaultData))
+    const report = await detectVaultHashConflict(localSnap, localSnap)
+    await recordVaultConflictFromMerge({
+      localVault: localSnap,
+      remoteVault: localSnap,
+      mergedVault: localSnap,
+      report,
+      paused: false,
+    })
+    status = await getVaultConflictStatus()
+  }
   const hasMismatch = !!(status.conflict && status.conflict.hasHashMismatch)
   return {
     ok: true,
@@ -6362,18 +6381,103 @@ export async function checkVaultConflictNow() {
 }
 
 /**
- * Manually resolve a detected vault hash mismatch by choosing:
- *   - `'local'` — Keep Local Vault Version and push it to Cloud
- *   - `'cloud'` — Adopt Cloud Vault Version and replace Local
- *   - `'merge'` — Smart Merge both versions (preserving conflict-copy passwords in entry history) and push
+ * Manually resolve a detected vault hash mismatch or execute an explicit vault
+ * version action in Conflict Resolver by choosing:
+ *   - `'local'`        — Keep Local Vault Version and push it to Cloud
+ *   - `'cloud'`        — Adopt Cloud Vault Version and replace Local
+ *   - `'merge'`        — Smart Merge both versions (preserving conflict-copy passwords in entry history) and push
+ *   - `'delete-cloud'` — Delete the conflicted/remote Cloud Vault copy while keeping the Local Vault intact
  */
 export async function resolveVaultConflict(choice, opts = {}) {
-  const normalizedChoice = choice === 'local' ? 'local' : (choice === 'cloud' ? 'cloud' : 'merge')
+  const normalizedChoice = choice === 'local'
+    ? 'local'
+    : choice === 'cloud'
+      ? 'cloud'
+      : choice === 'delete-cloud'
+        ? 'delete-cloud'
+        : 'merge'
   if (!isUnlocked && !opts.allowLockedTest) {
     return { ok: false, locked: true, error: 'Unlock the vault first to resolve a vault conflict' }
   }
   return withSyncLock(async () => {
-    const { [VAULT_CONFLICT_KEY]: stored } = await chrome.storage.local.get(VAULT_CONFLICT_KEY)
+    let { [VAULT_CONFLICT_KEY]: stored } = await chrome.storage.local.get(VAULT_CONFLICT_KEY)
+
+    // UCRYPT-32: Handle 'delete-cloud' — deletes the remote/conflicted cloud vault copy
+    // while preserving the local vault completely intact.
+    if (normalizedChoice === 'delete-cloud') {
+      let transportDeleted = false
+      let deleteError = null
+      if (!opts.skipTransportDelete) {
+        try {
+          const delOut = await deleteCloudCopy()
+          transportDeleted = !!(delOut && delOut.deleted)
+        } catch (e) {
+          deleteError = (e && e.message) || String(e)
+        }
+      }
+      try {
+        const { [SYNC_META_KEY]: meta } = await chrome.storage.sync.get(SYNC_META_KEY)
+        const staleKeys = meta?.chunks
+          ? Array.from({ length: meta.chunks }, (_, i) => SYNC_CHUNK_PREFIX + i)
+          : []
+        await chrome.storage.sync.remove([SYNC_META_KEY, 'ucrypt:vaultSync', ...staleKeys])
+      } catch { /* best-effort chunk cleanup */ }
+
+      const localSnap = vaultData || (_pendingConflictSnapshots && _pendingConflictSnapshots.localVault) || { entries: [], tombstones: [], lastModified: Date.now() }
+      const winningHash = await computeVaultHash(localSnap)
+      const entryCount = Array.isArray(localSnap.entries) ? localSnap.entries.length : 0
+      const localTombstoneCount = Array.isArray(localSnap.tombstones) ? localSnap.tombstones.length : 0
+      const now = Date.now()
+      const resolvedRecord = {
+        ...(stored && typeof stored === 'object' ? stored : {}),
+        status: 'resolved',
+        active: false,
+        canResolve: true,
+        paused: false,
+        hasHashMismatch: false,
+        hashMismatch: false,
+        hasConflict: false,
+        requiresManualResolution: false,
+        autoMerged: false,
+        deletedCloud: true,
+        localHash: winningHash,
+        remoteHash: '',
+        mergedHash: winningHash,
+        localEntryCount: entryCount,
+        remoteEntryCount: 0,
+        mergedEntryCount: entryCount,
+        localTombstoneCount,
+        remoteTombstoneCount: 0,
+        conflictCount: 0,
+        diffCount: 0,
+        localOnlyCount: 0,
+        cloudOnlyCount: 0,
+        diffEntries: [],
+        diffs: [],
+        conflicts: [],
+        resolvedAt: now,
+        resolvedChoice: 'delete-cloud',
+        winningHash,
+      }
+      delete resolvedRecord.sealedLocal
+      delete resolvedRecord.sealedRemote
+      delete resolvedRecord.sealedMerged
+      _pendingConflictSnapshots = null
+      await chrome.storage.local.set({ [VAULT_CONFLICT_KEY]: resolvedRecord })
+      return {
+        ok: true,
+        choice: 'delete-cloud',
+        deletedCloud: true,
+        transportDeleted,
+        ...(deleteError ? { transportNote: deleteError } : {}),
+        hash: winningHash,
+        winningHash,
+        entryCount,
+        pushed: false,
+        conflict: resolvedRecord,
+      }
+    }
+
     let localSnap = _pendingConflictSnapshots && _pendingConflictSnapshots.localVault
     let remoteSnap = _pendingConflictSnapshots && _pendingConflictSnapshots.remoteVault
     let mergedSnap = _pendingConflictSnapshots && _pendingConflictSnapshots.mergedVault
@@ -6388,8 +6492,29 @@ export async function resolveVaultConflict(choice, opts = {}) {
       mergedSnap = await unsealConflictSnapshot(stored.sealedMerged)
     }
 
+    // UCRYPT-32: If the user clicked 'cloud' or 'merge' and no cached remote snapshot
+    // is in memory/storage yet, pull and inspect the remote vault live on-demand.
+    if (!remoteSnap && (normalizedChoice === 'cloud' || normalizedChoice === 'merge') && isUnlocked && syncKey) {
+      try {
+        await _pullCore({ pauseOnHashMismatch: true })
+        const refreshed = await chrome.storage.local.get(VAULT_CONFLICT_KEY)
+        stored = refreshed[VAULT_CONFLICT_KEY] || stored
+        localSnap = localSnap || (_pendingConflictSnapshots && _pendingConflictSnapshots.localVault)
+        remoteSnap = remoteSnap || (_pendingConflictSnapshots && _pendingConflictSnapshots.remoteVault)
+        mergedSnap = mergedSnap || (_pendingConflictSnapshots && _pendingConflictSnapshots.mergedVault)
+        if (!remoteSnap && stored && stored.sealedRemote) {
+          remoteSnap = await unsealConflictSnapshot(stored.sealedRemote)
+        }
+      } catch { /* fallback below */ }
+    }
+
     if (!localSnap && vaultData) {
       localSnap = JSON.parse(JSON.stringify(vaultData))
+    }
+    // If hashes are already in sync (no mismatch) and the user explicitly clicks
+    // 'Use Cloud Version', the cloud version matches the local version.
+    if (!remoteSnap && localSnap && stored && !stored.hasHashMismatch && stored.remoteHash && stored.remoteHash === stored.localHash) {
+      remoteSnap = JSON.parse(JSON.stringify(localSnap))
     }
     if (!mergedSnap && localSnap && remoteSnap) {
       mergedSnap = mergeVaults(localSnap, remoteSnap)
@@ -6400,7 +6525,7 @@ export async function resolveVaultConflict(choice, opts = {}) {
       if (!localSnap) return { ok: false, error: 'No local vault snapshot available to restore' }
       chosenVault = JSON.parse(JSON.stringify(localSnap))
     } else if (normalizedChoice === 'cloud') {
-      if (!remoteSnap) return { ok: false, error: 'No cloud vault snapshot available to adopt — run Check Hashes or Sync Now first' }
+      if (!remoteSnap) return { ok: false, error: 'No cloud vault snapshot available to adopt — connect Cloud Sync or run Sync Now first' }
       chosenVault = JSON.parse(JSON.stringify(remoteSnap))
     } else {
       if (!mergedSnap && localSnap) mergedSnap = JSON.parse(JSON.stringify(localSnap))
@@ -6433,13 +6558,14 @@ export async function resolveVaultConflict(choice, opts = {}) {
       ...(stored && typeof stored === 'object' ? stored : {}),
       status: 'resolved',
       active: false,
-      canResolve: false,
+      canResolve: true,
       paused: false,
       hasHashMismatch: false,
       hashMismatch: false,
       hasConflict: false,
       requiresManualResolution: false,
       autoMerged: false,
+      deletedCloud: false,
       localHash: winningHash,
       remoteHash: (push && push.ok) ? winningHash : ((stored && stored.remoteHash) || winningHash),
       mergedHash: winningHash,
@@ -6477,5 +6603,6 @@ export async function resolveVaultConflict(choice, opts = {}) {
     }
   })
 }
+
 
 
