@@ -683,7 +683,7 @@
     "message": "弹出窗口的“快速生成”按钮会使用这些设置。"
   },
   "genSymbolsLabel": {
-    "message": "符号 (!@#$…)"
+    "message": "符号 (!@#%^&*)"
   },
   "genSyncCodeBtn": {
     "message": "生成同步码"
