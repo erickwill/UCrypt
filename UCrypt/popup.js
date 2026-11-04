@@ -72,11 +72,11 @@ if (typeof globalThis.chrome === 'undefined' || !globalThis.chrome?.storage?.loc
     runtime: {
       id: 'ucrypt-standalone-preview',
       lastError: null,
-      getManifest: () => ({ version: '3.45.0', name: 'UCrypt' }),
+      getManifest: () => ({ version: '3.46.0', name: 'UCrypt' }),
       getURL: (p) => p,
       openOptionsPage: () => {},
       sendMessage: (_msg, cb) => {
-        const res = { ok: true, state: { initialized: true, unlocked: true, isUnlocked: true, hasMaster: true, entries: [], lockTimeoutMs: 900000 }, sync: { entryCount: 0, totalCount: 0 } }
+        const res = { ok: true, entries: [], tokens: [], state: { initialized: true, unlocked: true, isUnlocked: true, hasMaster: true, entries: [], lockTimeoutMs: 900000 }, sync: { entryCount: 0, totalCount: 0 } }
         if (typeof cb === 'function') cb(res)
         return Promise.resolve(res)
       },

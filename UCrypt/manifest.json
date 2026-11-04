@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtlVGzCyX3uXkdDv/8olxCIfzbso2Nr020UsibfkthUdy10Ehugbiyl4K+VP+2y0oba+xJVmtMOb98O0Ee+zmCRGB8r1jjazZ302vLw8KuRBuzHltslFkW2F58mVarzmNm1qAeOu8y8/L/EBSPC/HMqTPrI+o5Cxb0kCWiHi3adRrS3Vhfl/usYvGl8ItqhJFW9sYSk45MePZ8TEHy0WBh0eFsnLASyLJyHT7xAtuJIXVjb/gOdBRZ4GPYQqCp77DAEpyl8qBsMRLxEwQDTB8GvXjDkeb9FyEhSI0WJjwvQh33N9zflHicOy5T4XfBGOaI2wESoetf3kNNED9XrW9HQIDAQAB",
   "name": "__MSG_extName__",
-  "version": "3.45.0",
+  "version": "3.48.0",
   "default_locale": "en",
   "description": "__MSG_extDescription__",
   "permissions": [

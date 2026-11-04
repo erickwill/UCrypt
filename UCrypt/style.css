@@ -39,6 +39,10 @@
   --surface-2: rgba(0, 0, 0, 0.02);
   --surface-alt: rgba(127, 127, 127, 0.06);
   --text-muted: #71717a;
+  --text-dim: var(--muted);
+  --bg-input: var(--bg-soft);
+  --bg-card: var(--card);
+  --radius-sm: 8px;
   --green: #10b981;
   --ok: #2e9e5b;
 }
@@ -73,6 +77,10 @@
   --surface-2: rgba(255, 255, 255, 0.04);
   --surface-alt: rgba(127, 127, 127, 0.12);
   --text-muted: #9ca3af;
+  --text-dim: var(--muted);
+  --bg-input: var(--bg-soft);
+  --bg-card: var(--card);
+  --radius-sm: 8px;
   --green: #34d399;
   --ok: #34d399;
 }
@@ -322,7 +330,8 @@ input[type="range"] {
   transition: background 0.15s ease;
   flex-shrink: 0;
 }
-.switch.on { background: var(--accent); }
+.switch.on,
+.toggle-row input[type="checkbox"]:checked + .switch { background: var(--accent); }
 .switch::after {
   content: "";
   position: absolute;
@@ -334,7 +343,8 @@ input[type="range"] {
   border-radius: 50%;
   transition: transform 0.15s ease;
 }
-.switch.on::after { transform: translateX(16px); }
+.switch.on::after,
+.toggle-row input[type="checkbox"]:checked + .switch::after { transform: translateX(16px); }
 
 /* Forms */
 .form-group { margin-bottom: 0.85rem; }
@@ -385,24 +395,20 @@ input[type="range"] {
 .logo-icon {
   width: 44px;
   height: 44px;
-  background: var(--primary);
+  background: transparent;
   border-radius: 12px;
   display: grid;
   place-items: center;
   color: var(--primary-fg);
   position: relative;
   flex-shrink: 0;
+  overflow: hidden;
 }
-.logo-icon::after {
-  content: "";
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 12px;
-  height: 12px;
-  background: var(--accent);
-  border-radius: 50%;
-  border: 2px solid var(--bg);
+.logo-header-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
 }
 .logo h1 { font-size: 1.25rem; font-weight: 700; line-height: 1.2; }
 .logo p { font-size: 0.78rem; color: var(--muted); }
@@ -490,6 +496,10 @@ input[type="range"] {
   border-radius: var(--radius);
   padding: 1.5rem;
   box-shadow: var(--shadow);
+  margin-bottom: 14px;
+}
+.dialog > .card:last-child {
+  margin-bottom: 0;
 }
 .card h2 {
   font-size: 1.15rem;
@@ -978,26 +988,16 @@ body.popup-body { min-width: 400px; }
   gap: 0.55rem;
 }
 .popup-logo-icon {
-  width: 32px;
-  height: 32px;
-  background: var(--primary);
+  width: 34px;
+  height: 34px;
+  background: transparent;
   border-radius: 9px;
   display: grid;
   place-items: center;
   color: var(--primary-fg);
   position: relative;
   flex-shrink: 0;
-}
-.popup-logo-icon::after {
-  content: "";
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 9px;
-  height: 9px;
-  background: var(--accent);
-  border-radius: 50%;
-  border: 2px solid var(--bg);
+  overflow: hidden;
 }
 .popup-logo-text h1 {
   font-size: 1rem;
@@ -2616,7 +2616,7 @@ body.popup-body { min-width: 400px; }
 }
 
 /* Output card */
-.lab-output-card {
+.lab-output-card:not(.card) {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 12px;
@@ -2900,8 +2900,6 @@ button.sync-chip:focus-visible{outline:2px solid var(--accent,#0f766e);outline-o
 .mig-row input[type="checkbox"]{margin-top:3px;flex:none;width:16px;height:16px}
 .mig-row-passwords{cursor:default;flex-direction:column;gap:6px}
 .mig-row select{margin:0 6px}
-||||||| BASE-v256
-
 
 /* R102 — the Join Symphony: the joiner's live stage strip (J7) and the
    completion checklist (J5). Every stage updates IN PLACE; states are typed
@@ -2979,8 +2977,8 @@ button.sync-chip:focus-visible{outline:2px solid var(--accent,#0f766e);outline-o
    glyphs differentiate (chain 🔗 vs handshake 🤝); both themes ride the
    shared variables. */
 .transfer-door-line{display:flex;align-items:baseline;gap:6px}
-#dsDoorHead{border-left:3px solid var(--accent,#0f766e);margin-bottom:12px}
-#dsDoorHead h2{font-size:1.05rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#dsDoorHead{margin-bottom:14px}
+#dsDoorHead h2{font-size:1.15rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 0.5rem}
 
 /* ── R119 §7 — THE SIGN-IN LADDER (law 0.32, order §3.5) ────────────────────
    The rung cards read as a vertical ladder: a left border rail, one indent
@@ -3333,3 +3331,41 @@ details.settled-area.danger-zone > .settled-summary h2 {
   font-size: 0.98rem;
 }
 .sync-success-card .card-help { margin-bottom: 0.4rem; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UCRYPT-31 & UCRYPT-32 — Generator Session History & Conflict Resolver UI
+   ═══════════════════════════════════════════════════════════════════════ */
+.lab-history-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lab-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-soft, #14141f);
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.lab-history-preview {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--text);
+}
+.lab-history-meta {
+  color: var(--muted);
+  font-size: 0.76rem;
+  margin-left: auto;
+}
+.vcr-status-banner {
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+

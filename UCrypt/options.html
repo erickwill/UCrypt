@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>UCrypt — Settings</title>
+  <link rel="icon" type="image/png" href="icons/icon48.png" />
   <link rel="stylesheet" href="style.css" />
   <!-- QR generator loads as a plain script (globalThis.QR). Wordlists and
        the breach set are LAZY since v2.21.0 (lib/corpus.js) — see popup.html. -->
@@ -23,7 +24,7 @@
     <header class="opts-header">
       <div class="logo">
         <span class="logo-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.5 9.5 8 11 4.5-1.5 8-6 8-11V5l-8-3Z"/><path d="M9 12l2 2 4-4"/></svg>
+          <img src="icons/logo-header.png" alt="UCrypt" width="28" height="28" class="logo-header-img" />
         </span>
         <div>
           <h1>UCrypt</h1>
@@ -1256,14 +1257,23 @@
         <summary class="settled-summary">
           <h2 style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap">
             <span data-i18n="vcrTitle">Conflict Resolver</span>
-            <span id="vcrStateBadge" class="chip" data-state="clean">Hashes Matched ✓</span>
+            <span id="vcrStateBadge" class="chip" data-state="clean">✓ No conflict — Hashes in sync</span>
           </h2>
           <span class="settled-hint card-help" data-i18n="vcrSumHint">Manually choose between local and cloud vault versions when a SHA-256 hash mismatch is detected during merge.</span>
         </summary>
         <div class="settled-body">
           <p class="card-help" id="vcrIntro" style="margin:0 0 10px">
-            During every pull and merge, UCrypt computes canonical SHA-256 digests of your local vault and your remote cloud backup. When the hashes diverge, you can inspect the exact differences here and manually choose whether to keep your <strong>Local Version</strong>, adopt the <strong>Cloud Version</strong>, or apply a <strong>Smart Merge</strong> that preserves conflicting passwords in each entry’s password history.
+            During every pull and merge, UCrypt computes canonical SHA-256 digests of your local vault and your remote cloud backup. When the hashes diverge, you can inspect the exact differences here and manually choose whether to keep your <strong>Local Version</strong>, adopt the <strong>Cloud Version</strong>, apply a <strong>Smart Merge</strong> that preserves conflicting passwords in each entry’s password history, or <strong>Delete the Cloud Vault Copy</strong>.
           </p>
+
+          <!-- UCRYPT-32: Always-visible Conflict Status Verdict Banner (clearly states NO CONFLICT FOUND vs CONFLICT DETECTED) -->
+          <div id="vcrBanner" class="device-add-box vcr-status-banner" data-vcr-state="clean" role="status" aria-live="polite" style="margin:0 0 10px;border-left:3px solid #22c55e;background:rgba(34,197,94,0.08)">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <strong id="vcrBannerTitle" style="display:block;color:#4ade80">✓ NO CONFLICT FOUND — Everything is fine. Local and Cloud vaults are in sync.</strong>
+              <span class="chip" id="vcrBannerPill" style="background:rgba(34,197,94,0.16);color:#4ade80;border:1px solid rgba(34,197,94,0.35)">No Conflicts</span>
+            </div>
+            <p class="card-help" id="vcrBannerSub" style="margin:0">Canonical SHA-256 vault digests match — no manual intervention is required, though all vault version actions below remain unlocked if you ever want to force-push Local, adopt Cloud, run Smart Merge, or delete the remote Cloud copy.</p>
+          </div>
 
           <div class="device-add-box" style="margin:0 0 10px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
             <label class="check-row" for="vcrManualPolicyToggle" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:0">
@@ -1273,11 +1283,6 @@
             <div class="btn-row" style="margin:0">
               <button id="vcrCheckNowBtn" class="btn btn-outline btn-sm" type="button">Compare Local vs. Cloud Hashes Now</button>
             </div>
-          </div>
-
-          <div id="vcrBanner" class="device-add-box hidden" hidden style="margin:0 0 10px;border-left:3px solid #d97706">
-            <strong id="vcrBannerTitle" style="display:block;margin:0 0 4px">Hash mismatch detected between Local and Cloud vault versions</strong>
-            <p class="card-help" id="vcrBannerSub" style="margin:0">Choose which vault version should be authoritative below. Nothing is overwritten until you confirm.</p>
           </div>
 
           <div id="vcrComparisonGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin:0 0 10px">
@@ -1352,6 +1357,26 @@
               </div>
               <button id="vcrChooseMergeBtn" class="btn btn-outline btn-sm" type="button" style="width:100%;margin-top:6px">
                 Merge Both &amp; Keep Conflict Copies
+              </button>
+            </div>
+
+            <!-- Delete Cloud Conflicted Vault Card (UCRYPT-32) -->
+            <div class="device-add-box" id="vcrDeleteCloudCard" style="margin:0;display:flex;flex-direction:column;justify-content:space-between;gap:8px">
+              <div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px">
+                  <strong>Cloud Conflicted Copy</strong>
+                  <span class="chip" id="vcrDeleteCloudTag" style="color:#f87171;border-color:rgba(248,113,113,0.35)">Purge Cloud</span>
+                </div>
+                <div class="sync-row" style="font-size:12px;margin-bottom:4px">
+                  <span>Action:</span>
+                  <strong id="vcrDeleteCloudStatus">Delete remote copy</strong>
+                </div>
+                <p class="card-help" style="font-size:11px;margin:4px 0 0">
+                  Deletes the conflicted or stale vault envelope stored in your cloud backup while keeping your local vault on this device completely intact.
+                </p>
+              </div>
+              <button id="vcrDeleteCloudBtn" class="btn btn-outline btn-sm" type="button" style="width:100%;margin-top:6px;border-color:rgba(248,113,113,0.45);color:#f87171">
+                Delete Cloud Vault Copy
               </button>
             </div>
           </div>
@@ -2179,7 +2204,7 @@
     <section id="tab-share" class="opts-panel" tabindex="-1">
       <!-- UCRYPT-24 & UCRYPT-26 — Unified Cloud Sync Hero Card for Direct Share tab -->
       <header class="opts-panel-head card transfer-door-head" id="dsDoorHead">
-        <h2 class="opts-panel-h1" tabindex="-1" style="font-size:16px;margin:0 0 10px"><span data-i18n="dsTabH1">File Transfer between UCrypt Users</span></h2>
+        <h2 tabindex="-1"><span data-i18n="dsTabH1">File Transfer between UCrypt Users</span></h2>
         <p class="sync-status" id="dsUnifiedStatusLine">
           <span class="text-muted">Share channel:</span>
           <strong id="dsHeroStateText" class="text-ok">End-to-end encrypted peer handshake · No chain or cloud account required</strong>
@@ -2445,12 +2470,14 @@
           <button id="genHeroCopyBtn" class="btn btn-outline btn-sm" type="button">Copy secret</button>
           <button id="genHeroAnalyzeBtn" class="btn btn-ghost btn-sm" type="button">Analyze a password</button>
         </div>
-        <p data-i18n="labHelp" class="card-help" style="margin-top:8px">
+        <p data-i18n="labHelp" class="card-help" style="margin-top:8px;margin-bottom:0">
           Seven secure tools in one place — every generation, copy, save and
           use is an explicit action. Nothing is created, stored or submitted
           automatically, and nothing you type here ever leaves this device.
         </p>
+      </div>
 
+      <div class="card" id="genControlsCard">
         <div id="labTabs" class="lab-tabs" role="tablist" aria-label="Generator Lab modes" data-i18n-aria="labTabsAria">
           <button class="lab-tab active" role="tab" aria-selected="true" aria-controls="labpanel-random" id="labtab-random" data-lab="random" data-i18n="labTabPassword">🔑 Password</button>
           <button class="lab-tab" role="tab" aria-selected="false" aria-controls="labpanel-passphrase" id="labtab-passphrase" data-lab="passphrase" tabindex="-1" data-i18n="labTabPassphrase">🌀 Passphrase</button>
@@ -2484,7 +2511,7 @@
             <label class="toggle-row"><span data-i18n="genLowerLabel">Lowercase (a-z)</span><input type="checkbox" id="randLower" data-toggle /><span class="switch"></span></label>
             <label class="toggle-row"><span data-i18n="genUpperLabel">Uppercase (A-Z)</span><input type="checkbox" id="randUpper" data-toggle /><span class="switch"></span></label>
             <label class="toggle-row"><span data-i18n="genNumbersLabel">Numbers (0-9)</span><input type="checkbox" id="randNumbers" data-toggle /><span class="switch"></span></label>
-            <label class="toggle-row"><span data-i18n="genSymbolsLabel">Symbols (!@#$…)</span><input type="checkbox" id="randSymbols" data-toggle /><span class="switch"></span></label>
+            <label class="toggle-row"><span data-i18n="genSymbolsLabel">Symbols (!@#%^&amp;*)</span><input type="checkbox" id="randSymbols" data-toggle /><span class="switch"></span></label>
             <label class="toggle-row"><span data-i18n="genExclAmbigLabel">Exclude ambiguous (lI1O0)</span><input type="checkbox" id="randExcludeAmbiguous" data-toggle /><span class="switch"></span></label>
             <label class="toggle-row"><span data-i18n="genNoDupLabel">No duplicates</span><input type="checkbox" id="randNoDuplicates" data-toggle /><span class="switch"></span></label>
             <label class="toggle-row"><span data-i18n="genNoSeqLabel">No sequences</span><input type="checkbox" id="randNoSequences" data-toggle /><span class="switch"></span></label>
@@ -2660,11 +2687,6 @@
           <div class="btn-row">
             <button id="mnGenerateBtn" class="btn btn-primary" data-i18n="mnGenerateBtn">Generate phrase</button>
           </div>
-          <!-- R154 §6 (B.2) — THE OWNER'S SPEC (E-2): the generated mnemonic
-               renders DIRECTLY BELOW the Generate button — here, first, not
-               in a shared card the eye must hunt for. DOM-only (the R72 law:
-               never persisted, never logged); copy is a high-risk explicit
-               action gated like the QR. -->
           <div id="mnPhraseCard" class="lab-mn-output hidden" aria-live="polite">
             <div id="mnPhraseText" class="mn-phrase" tabindex="0" aria-label="Generated mnemonic phrase"></div>
             <div class="btn-row">
@@ -2690,64 +2712,75 @@
           <div id="mnCheckResult" class="card-help card-help-subtle hidden" aria-live="polite"></div>
         </div>
 
-        <!-- ── Shared output (generating modes) ───────────────────────── -->
-        <div id="labOutputCard" class="lab-output-card">
-          <div class="label-row">
-            <h3 data-i18n="labOutputHeader">Generated secret</h3>
-            <div class="btn-row">
-              <label class="sr-only" for="labAutoHide" data-i18n="labAutoHideLabel">Auto-hide</label>
-              <select id="labAutoHide" class="input-select input-select-sm" data-i18n-title="labAutoHideTitle" title="Auto-hide the displayed secret">
-                <option value="0" data-i18n="labAutoHideOff">Auto-hide: off</option>
-                <option value="10" data-i18n="labAutoHide10">10 s</option>
-                <option value="20" data-i18n="labAutoHide20">20 s</option>
-                <option value="30" data-i18n="labAutoHide30">30 s</option>
-                <option value="60" data-i18n="labAutoHide60">60 s</option>
-              </select>
-              <button id="labQrBtn" class="btn btn-ghost btn-sm" data-i18n="labQrBtn" title="Show a QR code">QR</button>
-            </div>
-          </div>
-          <div id="labOutput" class="preview-output lab-output" aria-live="polite">—</div>
-          <div id="labComposition" class="lab-composition hidden" aria-hidden="true"></div>
-          <div class="label-row" style="margin-top:8px">
-            <span id="labStrengthBadge" class="vault-strength" hidden></span>
-            <span id="labBits" class="card-help card-help-subtle">—</span>
-          </div>
-          <div class="preview-strength"><div id="labStrengthFill" class="preview-strength-fill" style="width:0"></div></div>
-          <div class="label-row">
-            <span id="labCrack" class="card-help card-help-subtle">—</span>
-          </div>
-          <p class="card-help card-help-subtle" data-i18n="labCrackCaveat">Crack time is an offline estimate at 10¹³ guesses/s under stated assumptions — never a guarantee.</p>
-          <div class="btn-row" style="margin-top:8px">
-            <button id="labRegenBtn" class="btn btn-primary" data-i18n="regenPreviewBtn">Regenerate</button>
-            <button id="labCopyBtn" class="btn btn-outline" disabled data-i18n="copyBtn">Copy</button>
-            <button id="labRevealBtn" class="btn btn-ghost" aria-pressed="true" data-i18n="entryHideBtn">Hide</button>
-            <button id="labUseBtn" class="btn btn-outline" disabled data-i18n="labUseBtn" title="Fill on the current page's password field">Use on page</button>
-            <button id="labSaveBtn" class="btn btn-outline" disabled data-i18n="labSaveBtn" title="Save to the encrypted vault">Save to UCrypt…</button>
-          </div>
-          <div id="labQrWrap" class="hidden" style="margin-top:10px">
-            <img id="labQrImg" alt="QR code of the generated secret" style="max-width:180px;border-radius:8px;background:#fff;padding:8px" />
-            <p class="card-help card-help-subtle" data-i18n="labQrWarn">The image contains the secret in plain sight — anyone who sees or screenshots it has it.</p>
-            <button id="labQrPngBtn" class="btn btn-outline btn-sm" data-i18n="labQrPngBtn">Download PNG</button>
+        <div class="btn-row" style="margin-top:14px">
+          <button id="saveGenBtn" class="btn btn-primary" data-i18n="saveGenBtn">Save settings</button>
+        </div>
+      </div>
+
+      <!-- ── Shared output (generating modes) — standalone Cloud Sync card ── -->
+      <div id="labOutputCard" class="card lab-output-card">
+        <div class="label-row">
+          <h2 data-i18n="labOutputHeader" style="margin:0">Generated secret</h2>
+          <div class="btn-row" style="margin:0">
+            <label class="sr-only" for="labAutoHide" data-i18n="labAutoHideLabel">Auto-hide</label>
+            <select id="labAutoHide" class="input-select input-select-sm" data-i18n-title="labAutoHideTitle" title="Auto-hide the displayed secret">
+              <option value="0" data-i18n="labAutoHideOff">Auto-hide: off</option>
+              <option value="10" data-i18n="labAutoHide10">10 s</option>
+              <option value="20" data-i18n="labAutoHide20">20 s</option>
+              <option value="30" data-i18n="labAutoHide30">30 s</option>
+              <option value="60" data-i18n="labAutoHide60">60 s</option>
+            </select>
+            <button id="labQrBtn" class="btn btn-ghost btn-sm" data-i18n="labQrBtn" title="Show a QR code">QR</button>
           </div>
         </div>
-
-        <!-- ── Session history (redacted metadata, default off) ───────── -->
-        <details id="labHistoryBox" class="popup-options" style="margin-top:10px">
-          <summary>
-            <span data-i18n="labHistoryHeader">Session history</span>
-            <label class="toggle-row toggle-row-inline" style="margin-left:10px">
-              <span data-i18n="labHistoryToggle">Keep this session</span>
-              <input type="checkbox" id="labHistoryEnabled" />
-              <span class="switch"></span>
-            </label>
-          </summary>
-          <p class="card-help card-help-subtle" data-i18n="labHistoryHelp">Redacted metadata only (kind · bits · time · masked preview) — kept in this page's memory for this session, never on disk, never synced. Wallet mnemonics are never listed. Cleared on lock, close or navigation.</p>
-          <ul id="labHistoryList" class="lab-history-list"></ul>
-          <button id="labClearHistoryBtn" class="btn btn-ghost btn-sm" data-i18n="labClearHistoryBtn">Clear history</button>
-        </details>
-
-        <button id="saveGenBtn" class="btn btn-primary" style="margin-top:14px" data-i18n="saveGenBtn">Save settings</button>
+        <div id="labOutput" class="preview-output lab-output" aria-live="polite">—</div>
+        <div id="labComposition" class="lab-composition hidden" aria-hidden="true"></div>
+        <div class="label-row" style="margin-top:8px">
+          <span id="labStrengthBadge" class="vault-strength" hidden></span>
+          <span id="labBits" class="card-help card-help-subtle">—</span>
+        </div>
+        <div class="preview-strength"><div id="labStrengthFill" class="preview-strength-fill" style="width:0"></div></div>
+        <div class="label-row">
+          <span id="labCrack" class="card-help card-help-subtle">—</span>
+        </div>
+        <p class="card-help card-help-subtle" data-i18n="labCrackCaveat">Crack time is an offline estimate at 10¹³ guesses/s under stated assumptions — never a guarantee.</p>
+        <div class="btn-row" style="margin-top:8px">
+          <button id="labRegenBtn" class="btn btn-primary" data-i18n="regenPreviewBtn">Regenerate</button>
+          <button id="labCopyBtn" class="btn btn-outline" disabled data-i18n="copyBtn">Copy</button>
+          <button id="labRevealBtn" class="btn btn-ghost" aria-pressed="true" data-i18n="entryHideBtn">Hide</button>
+          <button id="labUseBtn" class="btn btn-outline" disabled data-i18n="labUseBtn" title="Fill on the current page's password field">Use on page</button>
+          <button id="labSaveBtn" class="btn btn-outline" disabled data-i18n="labSaveBtn" title="Save to the encrypted vault">Save to UCrypt…</button>
+        </div>
+        <div id="labQrWrap" class="hidden" style="margin-top:10px">
+          <img id="labQrImg" alt="QR code of the generated secret" style="max-width:180px;border-radius:8px;background:#fff;padding:8px" />
+          <p class="card-help card-help-subtle" data-i18n="labQrWarn">The image contains the secret in plain sight — anyone who sees or screenshots it has it.</p>
+          <button id="labQrPngBtn" class="btn btn-outline btn-sm" data-i18n="labQrPngBtn">Download PNG</button>
+        </div>
       </div>
+
+      <!-- ── Session history (redacted metadata, default off) — Settled-House card ── -->
+      <details id="labHistoryBox" class="card settled-area" data-settled-area="gen-session-history">
+        <summary id="labHistorySummary" class="settled-summary" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <h2 style="display:inline-flex;align-items:center;gap:8px;margin:0">
+            <span data-i18n="labHistoryHeader">Session history</span>
+            <span id="labHistoryCountBadge" class="chip" style="font-size:11px;padding:1px 8px">Off</span>
+          </h2>
+          <span class="settled-hint card-help" style="margin-right:auto">In-memory session log of generated secrets (never written to disk or synced).</span>
+          <label id="labHistoryToggleLabel" class="toggle-row toggle-row-inline" style="margin-left:auto;cursor:pointer">
+            <span data-i18n="labHistoryToggle">Keep this session</span>
+            <input type="checkbox" id="labHistoryEnabled" data-toggle />
+            <span class="switch" id="labHistorySwitch"></span>
+          </label>
+        </summary>
+        <div class="settled-body">
+          <p class="card-help card-help-subtle" data-i18n="labHistoryHelp" style="margin-top:4px">Redacted metadata only (kind · bits · time · masked preview) — kept in this page's memory for this session, never on disk, never synced. Wallet mnemonics are never listed. Cleared on lock, close or navigation.</p>
+          <p id="labHistoryEmptyState" class="card-help" style="margin:6px 0;padding:8px 10px;border-radius:6px;background:var(--bg-input);border:1px dashed var(--border)">Session history is currently off. Turn on <strong>Keep this session</strong> above to record generated secrets during this session.</p>
+          <ul id="labHistoryList" class="lab-history-list"></ul>
+          <div class="btn-row" style="margin-top:8px">
+            <button id="labClearHistoryBtn" class="btn btn-ghost btn-sm" type="button" data-i18n="labClearHistoryBtn">Clear history</button>
+          </div>
+        </div>
+      </details>
     </section>
 
     <!-- R72 — Lab high-risk confirm dialog (mnemonic reveal/copy/QR).
@@ -2785,19 +2818,21 @@
         </p>
         <div class="sync-status-strip" role="group" aria-label="Wordlist status at a glance">
           <button class="sync-chip" id="wlChipEff" data-state="ok" type="button" aria-label="Open Passphrase generator with EFF wordlists"><span class="sync-chip-dot ok" aria-hidden="true"></span><span>Offline EFF wordlists</span></button>
-          <button class="sync-chip" id="wlChipScrape" data-state="ok" type="button" aria-label="Focus URL scraper input"><span class="sync-chip-dot ok" aria-hidden="true"></span><span>Direct URL scraper</span></button>
-          <button class="sync-chip" id="wlChipJson" data-state="ok" type="button" aria-label="Import custom JSON wordlist"><span class="sync-chip-dot ok" aria-hidden="true"></span><span>JSON import / export</span></button>
+          <button class="sync-chip" id="wlChipScrape" data-state="ok" type="button" aria-label="Focus URL scraper input"><span class="sync-chip-dot ok" aria-hidden="true"></span><span id="wlChipScrapeText">Direct URL scraper</span></button>
+          <button class="sync-chip" id="wlChipJson" data-state="ok" type="button" aria-label="Import custom JSON wordlist"><span class="sync-chip-dot ok" aria-hidden="true"></span><span>JSON / Text builder</span></button>
         </div>
         <div class="btn-row" id="wlHeroActions" style="margin-top:10px">
           <button id="wlHeroScrapeFocusBtn" class="btn btn-primary btn-sm" type="button">Scrape from URL</button>
           <button id="wlHeroImportBtn" class="btn btn-outline btn-sm" type="button">Import .json list</button>
           <button id="wlHeroOpenGenBtn" class="btn btn-ghost btn-sm" type="button">Use in Passphrase Lab</button>
         </div>
-        <p data-i18n="wlHelp" class="card-help" style="margin-top:8px">
-          Scrape a URL to build a custom wordlist for diceware passphrases.
-          The extension fetches the URL directly (no CORS proxy needed —
-          host_permissions grants cross-origin access).
+        <p data-i18n="wlHelp" class="card-help" style="margin-top:8px;margin-bottom:0">
+          Scrape an HTTPS article, paste any text corpus offline, or import a JSON array to build a custom diceware wordlist stored exclusively on this device.
         </p>
+      </div>
+
+      <div class="card" id="wlWorkspaceCard">
+        <h2>Build or Manage Custom Wordlist</h2>
         <div class="form-group">
           <label data-i18n="wlUrlLabel" for="scrapeUrl">URL</label>
           <input id="scrapeUrl" type="url" placeholder="https://example.com/article" />
@@ -2809,9 +2844,36 @@
           <button id="deleteWordlistBtn" class="btn btn-danger" disabled data-i18n="deleteWlBtn">Delete</button>
         </div>
         <input id="wordlistFile" type="file" accept=".json,application/json" class="hidden" />
-        <p class="card-help" id="wlEmptyState" data-i18n="wlEmptyState" hidden>No custom wordlist yet — scrape one from a URL or import a list, and the passphrase generator will blend it in.</p>
+        <p class="card-help" id="wlEmptyState" data-i18n="wlEmptyState" hidden>No custom wordlist yet — scrape one from a URL, extract from pasted text below, or import a .json list, and the passphrase generator will blend it in.</p>
         <div id="scrapeResult" class="scrape-result hidden"></div>
+
+        <hr class="divider" />
+        <div id="wlPasteSection" class="form-group" style="margin-bottom:0">
+          <label for="wlPasteInput">Build offline from pasted text or word list</label>
+          <p class="card-help card-help-subtle" style="margin:2px 0 8px">
+            Paste any article, book excerpt, or whitespace/comma-separated words below. UCrypt deterministically extracts unique lowercase alphabetic words (3–16 letters) entirely offline — no network fetch required.
+          </p>
+          <textarea id="wlPasteInput" rows="3" placeholder="Paste an article, poem, or list of words here to extract unique diceware words offline…" autocomplete="off" spellcheck="false"></textarea>
+          <div class="btn-row" style="margin-top:8px">
+            <button id="wlPasteBuildBtn" class="btn btn-outline btn-sm" type="button">Extract &amp; save custom wordlist</button>
+            <button id="wlPasteSampleBtn" class="btn btn-ghost btn-sm" type="button">Load offline sample corpus</button>
+          </div>
+        </div>
       </div>
+
+      <details class="card settled-area" id="wlGuideCard" data-settled-area="wl-guide">
+        <summary class="settled-summary">
+          <h2>Wordlist Pools &amp; Diceware Entropy Reference</h2>
+          <span class="settled-hint card-help">How EFF Large, Short #1/#2, and custom wordlists compute per-word entropy bits.</span>
+        </summary>
+        <div class="settled-body">
+          <ul class="card-help" style="margin:0 0 4px 18px;padding:0">
+            <li><strong>EFF Large (7,776 words · 12.92 bits/word):</strong> Five-dice roll pool curated by the Electronic Frontier Foundation for maximum memorability and zero prefix collisions.</li>
+            <li><strong>EFF Short #1 &amp; #2 (1,296 words · 10.34 bits/word):</strong> Four-dice roll pools optimized for rapid mobile typing and distinct 3-character prefixes.</li>
+            <li><strong>Custom Device Wordlist (<code>log₂(N)</code> bits/word):</strong> Extracted deterministically on-device from your chosen URL, pasted text, or <code>.json</code> list. Stored in <code>chrome.storage.local</code> and never synced to the cloud.</li>
+          </ul>
+        </div>
+      </details>
     </section>
 
     <!-- Tab: Export / Import -->
@@ -2841,66 +2903,65 @@
           <button id="dataHeroIcBtn" class="btn btn-ghost" type="button">Import from another browser</button>
         </div>
         <input id="importFile" type="file" accept=".json,application/json" class="hidden" />
-        <p data-i18n="eiHelpSubtle" class="card-help card-help-subtle">
+        <p data-i18n="eiHelpSubtle" class="card-help card-help-subtle" style="margin-bottom:0">
           Need the master passphrase used to create the file to decrypt it.
         </p>
-
-        <hr class="divider" />
-
-        <!-- v2.9.0 — data ownership: the same plaintext-CSV exit door every
-             browser password manager offers, guarded by double confirmation. -->
-        <h2 data-i18n="csvHeader">Export decrypted passwords (CSV)</h2>
-        <p data-i18n="csvHelp" class="card-help">
-          Migrate <em>out</em> to another browser or manager: exports your
-          saved logins as a plaintext CSV in the exact format Chrome, Brave
-          and Edge import. <strong>The file is NOT encrypted — anyone who can
-          read it has every password.</strong> Delete it immediately after
-          importing.
-        </p>
-        <div class="btn-row">
-          <button id="exportCsvBtn" class="btn btn-outline" data-i18n="exportCsvBtn">Export decrypted CSV…</button>
-        </div>
-
-        <!-- R165 ARC G — THE CARRIES (the R163 arcs, re-commanded and DUE):
-             the export-door receipts, the OFFLINE health report, the
-             gap-survey receipt. Copyable text, privacy-shaped: no passwords,
-             no vault material, no personal data. -->
-        <hr class="divider" />
-        <h2 data-i18n="doorHead">Data door — receipts</h2>
-        <p class="card-help" data-i18n="doorHelp">Copyable receipts about your data doors: what your exports left the device and under which consent, your vault's health computed entirely offline (no network), and the build's typed list of known gaps. No receipt ever carries a password or vault material.</p>
-        <div class="btn-row">
-          <button id="doorReceiptBtn" class="btn btn-outline" type="button" data-i18n="doorReceiptBtn">Copy the export-door receipt</button>
-          <button id="healthOfflineBtn" class="btn btn-outline" type="button" data-i18n="healthOfflineBtn">Copy the offline health report</button>
-          <button id="gapSurveyBtn" class="btn btn-outline" type="button" data-i18n="gapSurveyBtn">Copy the gap survey</button>
-        </div>
-        <p id="doorState" class="card-help" role="status" aria-live="polite"></p>
-
-        <!-- R110 §4.2 — THE COHERENCE MAP (the CEO's screenshot command):
-             one story for every data door — each import names its export,
-             each restore its backup. The doors stay where they are (no
-             moves without gallery coverage); the map makes the pairing
-             visible in one glance. -->
-        <hr class="divider" />
-        <!-- R170 §B8 — the coherence map: teaching prose in a titled, hinted
-             disclosure (the settled-house law; the doors themselves stay
-             exactly where they are — no moves without gallery coverage). -->
-        <details class="settled-area card-inset" data-settled-area="data-coherence" style="margin-top:10px">
-          <summary class="settled-summary">
-            <h2 data-i18n="dataCoherenceHead">Every data door — and its counterpart</h2>
-            <span class="settled-hint card-help" data-i18n="dataCoherenceSumHint">The map of every data door and its counterpart — import names its export.</span>
-          </summary>
-          <div class="settled-body">
-        <p class="card-help" data-i18n="dataCoherenceHelp" style="margin:0 0 6px">
-          Import → export / restore → backup, named pair by pair:
-        </p>
-        <ul class="card-help" style="margin:0 0 4px 18px;padding:0">
-          <li data-i18n="dataCoherenceVault">Vault backup: Export vault (here) ↔ Import vault (here) — the cloud copy lives in Sync → Cloud backup.</li>
-          <li data-i18n="dataCoherenceCsv">Browser passwords: export a decrypted CSV here ↔ import any browser's CSV in the migration wizard below.</li>
-          <li data-i18n="dataCoherenceBookmarks">Bookmarks: import via the wizard above ↔ restore into this browser below.</li>
-        </ul>
-          </div>
-        </details>
       </div>
+
+      <!-- v2.9.0 — Plaintext CSV exit door (Settled-House progressive disclosure) -->
+      <details class="card settled-area" id="csvExportCard" data-settled-area="data-csv-export">
+        <summary class="settled-summary">
+          <h2 data-i18n="csvHeader">Export decrypted passwords (CSV)</h2>
+          <span class="settled-hint card-help">Unencrypted plaintext CSV export for migrating out to another browser or manager (double-confirmed).</span>
+        </summary>
+        <div class="settled-body">
+          <p data-i18n="csvHelp" class="card-help">
+            Migrate <em>out</em> to another browser or manager: exports your
+            saved logins as a plaintext CSV in the exact format Chrome, Brave
+            and Edge import. <strong>The file is NOT encrypted — anyone who can
+            read it has every password.</strong> Delete it immediately after
+            importing.
+          </p>
+          <div class="btn-row">
+            <button id="exportCsvBtn" class="btn btn-outline" data-i18n="exportCsvBtn">Export decrypted CSV…</button>
+          </div>
+        </div>
+      </details>
+
+      <!-- R165 ARC G — Data door receipts & offline health report (Settled-House card) -->
+      <details class="card settled-area" id="dataReceiptsCard" data-settled-area="data-receipts">
+        <summary class="settled-summary">
+          <h2 data-i18n="doorHead">Data door — receipts</h2>
+          <span class="settled-hint card-help">Copyable zero-secret audit receipts for exports, offline vault health, and build gap survey.</span>
+        </summary>
+        <div class="settled-body">
+          <p class="card-help" data-i18n="doorHelp">Copyable receipts about your data doors: what your exports left the device and under which consent, your vault's health computed entirely offline (no network), and the build's typed list of known gaps. No receipt ever carries a password or vault material.</p>
+          <div class="btn-row">
+            <button id="doorReceiptBtn" class="btn btn-outline" type="button" data-i18n="doorReceiptBtn">Copy the export-door receipt</button>
+            <button id="healthOfflineBtn" class="btn btn-outline" type="button" data-i18n="healthOfflineBtn">Copy the offline health report</button>
+            <button id="gapSurveyBtn" class="btn btn-outline" type="button" data-i18n="gapSurveyBtn">Copy the gap survey</button>
+          </div>
+          <p id="doorState" class="card-help" role="status" aria-live="polite"></p>
+        </div>
+      </details>
+
+      <!-- R110 §4.2 / R170 §B8 — Coherence map (standalone Settled-House card) -->
+      <details class="card settled-area" id="dataCoherenceCard" data-settled-area="data-coherence">
+        <summary class="settled-summary">
+          <h2 data-i18n="dataCoherenceHead">Every data door — and its counterpart</h2>
+          <span class="settled-hint card-help" data-i18n="dataCoherenceSumHint">The map of every data door and its counterpart — import names its export.</span>
+        </summary>
+        <div class="settled-body">
+          <p class="card-help" data-i18n="dataCoherenceHelp" style="margin:0 0 6px">
+            Import → export / restore → backup, named pair by pair:
+          </p>
+          <ul class="card-help" style="margin:0 0 4px 18px;padding:0">
+            <li data-i18n="dataCoherenceVault">Vault backup: Export vault (here) ↔ Import vault (here) — the cloud copy lives in Sync → Cloud backup.</li>
+            <li data-i18n="dataCoherenceCsv">Browser passwords: export a decrypted CSV here ↔ import any browser's CSV in the migration wizard below.</li>
+            <li data-i18n="dataCoherenceBookmarks">Bookmarks: import via the wizard above ↔ restore into this browser below.</li>
+          </ul>
+        </div>
+      </details>
 
       <!-- R105 §2.2 — THE DIAGNOSTICS EXPORT (the bounded UI exception).
            Help-area triage door: ONE JSON summary to the clipboard — build,

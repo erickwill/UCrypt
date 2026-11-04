@@ -1,6 +1,6 @@
 # UCrypt — Zero-Trust Browser Password Manager & Security Suite
 
-**Version 3.45.0** · **Manifest V3** · **Zero-Knowledge AES-256-GCM & PBKDF2-SHA256 (600,000 iterations)**
+**Version 3.46.0** · **Manifest V3** · **Zero-Knowledge AES-256-GCM & PBKDF2-SHA256 (600,000 iterations)**
 
 UCrypt is a local-first, zero-telemetry password manager, passkey authenticator, TOTP generator, encrypted file transfer tool, and browser privacy suite for Chromium browsers (Chrome, Brave, Edge, Vivaldi, Opera).
 

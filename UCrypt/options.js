@@ -63,10 +63,10 @@ if (typeof globalThis.chrome === 'undefined' || !globalThis.chrome?.storage?.loc
     runtime: {
       id: 'ucrypt-standalone-preview',
       lastError: null,
-      getManifest: () => ({ version: '3.45.0', name: 'UCrypt' }),
+      getManifest: () => ({ version: '3.46.0', name: 'UCrypt' }),
       getURL: (p) => p,
       sendMessage: (_msg, cb) => {
-        const res = { ok: true, state: { initialized: true, unlocked: true, isUnlocked: true, hasMaster: true, entries: [], lockTimeoutMs: 900000 }, sync: { entryCount: 0, totalCount: 0 } }
+        const res = { ok: true, entries: [], tokens: [], state: { initialized: true, unlocked: true, isUnlocked: true, hasMaster: true, entries: [], lockTimeoutMs: 900000 }, sync: { entryCount: 0, totalCount: 0 } }
         if (typeof cb === 'function') cb(res)
         return Promise.resolve(res)
       },
@@ -564,6 +564,12 @@ async function refreshChecklist() {
 
 async function applyTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme)
+  try {
+    const f = document.getElementById('fileTransferFrame')
+    if (f && f.contentDocument && f.contentDocument.documentElement) {
+      f.contentDocument.documentElement.setAttribute('data-theme', theme)
+    }
+  } catch { /* cross-origin safe */ }
   await saveTheme(theme)
 }
 
@@ -612,6 +618,8 @@ async function refreshVault() {
       getMessage('statusNoMaster', undefined, 'No master passphrase set yet. Visit the Security tab to set one up.')
     $('vaultLocked').classList.add('hidden')
     $('vaultUnlocked').classList.add('hidden')
+    if ($('vaultHeroStateText')) $('vaultHeroStateText').textContent = 'No master passphrase set yet — open Security to create your AES-256-GCM vault'
+    if ($('vaultChipEncryptionText')) $('vaultChipEncryptionText').textContent = 'Vault uninitialized'
     return
   }
   if (!vaultState.isUnlocked) {
@@ -620,6 +628,8 @@ async function refreshVault() {
       getMessage('vaultLockedBanner', undefined, '🔒 Vault is locked. Enter your passphrase to manage entries.')
     $('vaultLocked').classList.remove('hidden')
     $('vaultUnlocked').classList.add('hidden')
+    if ($('vaultHeroStateText')) $('vaultHeroStateText').textContent = 'Vault is locked · AES-256-GCM encrypted at rest · Unlock below to manage entries'
+    if ($('vaultChipEncryptionText')) $('vaultChipEncryptionText').textContent = 'Locked · AES-256-GCM'
     // R112 §2 (D9) — the lock kills any live Direct Share session (typed
     // interrupted; the ephemeral keys are destroyed by the listener).
     try { window.dispatchEvent(new CustomEvent('ucrypt:vault-locked')) } catch { /* no listeners yet */ }
@@ -666,6 +676,19 @@ function renderVault(entries) {
   $('statEntries').textContent = String(entries.length)
   $('statDomains').textContent = String(domains.size)
   $('statBreached').textContent = String(breached.length)
+
+  if ($('vaultHeroStateText')) {
+    $('vaultHeroStateText').textContent = `Unlocked · ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} across ${domains.size} ${domains.size === 1 ? 'site' : 'sites'} · ${breached.length} breached`
+  }
+  if ($('vaultChipEncryptionText')) {
+    $('vaultChipEncryptionText').textContent = `Unlocked · ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`
+  }
+  if ($('vaultChipHealthText')) {
+    $('vaultChipHealthText').textContent = breached.length > 0 ? `${breached.length} breached · review health` : 'Password Health · 0 breached'
+  }
+  if ($('dataHeroStateText')) {
+    $('dataHeroStateText').textContent = `Encrypted .ucrypt backup ready · ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} in vault · 100% local migration`
+  }
 
   const list = $('vaultList')
   list.innerHTML = ''
@@ -5211,6 +5234,9 @@ function shortHash(h) {
   return s.length > 20 ? `${s.slice(0, 12)}…${s.slice(-8)}` : s
 }
 
+let _vcrInitialBootDone = false
+let _vcrAutoCheckedOnOpen = false
+
 async function renderVaultConflictResolver() {
   const card = $('vaultConflictResolverCard')
   if (!card) return
@@ -5224,6 +5250,7 @@ async function renderVaultConflictResolver() {
   const badge = $('vcrStateBadge')
   const banner = $('vcrBanner')
   const bannerTitle = $('vcrBannerTitle')
+  const bannerPill = $('vcrBannerPill')
   const bannerSub = $('vcrBannerSub')
   const conflictChip = $('syncChipConflict')
   const conflictChipText = $('syncChipConflictText')
@@ -5240,12 +5267,44 @@ async function renderVaultConflictResolver() {
   const btnLocal = $('vcrChooseLocalBtn')
   const btnCloud = $('vcrChooseCloudBtn')
   const btnMerge = $('vcrChooseMergeBtn')
+  const btnDeleteCloud = $('vcrDeleteCloudBtn')
   const diffBox = $('vcrDiffBox')
   const diffSummary = $('vcrDiffSummary')
   const diffList = $('vcrDiffList')
 
   const isActive = !!(conflict && conflict.active)
-  const canAct = !!(conflict && (conflict.active || conflict.canResolve))
+  const hasUnresolvedMismatch = !!(conflict && (conflict.active || (conflict.hasConflict && !conflict.resolvedAt && !conflict.autoMerged)))
+  const canAct = !!(resp ? (resp.canResolve !== false) : true)
+
+  const localHashVal = (conflict && conflict.localHash) || (resp && resp.currentLocalHash) || null
+  const localCountVal = (conflict && conflict.localEntryCount != null)
+    ? conflict.localEntryCount
+    : ((resp && resp.currentLocalCount != null) ? resp.currentLocalCount : null)
+  const localTombVal = (conflict && conflict.localTombstoneCount != null)
+    ? conflict.localTombstoneCount
+    : ((resp && resp.currentLocalTombstoneCount != null) ? resp.currentLocalTombstoneCount : 0)
+  const localTimeVal = (conflict && conflict.localUpdatedAt) || (resp && resp.currentLocalLastModified) || null
+  const localEntriesLabel = localCountVal != null ? `${localCountVal} entries` : '0 entries'
+
+  // UCRYPT-32: Keep Conflict Resolver collapsed on page load unless there is an active conflict to resolve.
+  if (!_vcrInitialBootDone) {
+    _vcrInitialBootDone = true
+    if (isActive) {
+      card.setAttribute('data-fire-revealed', 'true')
+      try { SettledHouse.reveal('conflict-resolver') } catch { /* best-effort */ }
+      card.open = true
+      card.setAttribute('open', '')
+    } else {
+      card.removeAttribute('data-fire-revealed')
+      card.open = false
+      card.removeAttribute('open')
+    }
+  } else if (isActive) {
+    card.setAttribute('data-fire-revealed', 'true')
+    try { SettledHouse.reveal('conflict-resolver') } catch { /* best-effort */ }
+    card.open = true
+    card.setAttribute('open', '')
+  }
 
   if (conflictChip) {
     conflictChip.classList.toggle('hidden', !isActive)
@@ -5256,88 +5315,153 @@ async function renderVaultConflictResolver() {
     }
   }
 
-  if (isActive) {
-    try { SettledHouse.reveal('conflict-resolver') } catch { /* best-effort */ }
-    card.open = true
+  if (banner) {
+    banner.classList.remove('hidden')
+    banner.hidden = false
+  }
+
+  if (isActive || hasUnresolvedMismatch) {
     if (badge) {
-      badge.textContent = getMessage('vcrStateMismatch', undefined, '⚠ Hash mismatch — manual resolution required')
-      badge.style.color = 'var(--amber, #f59e0b)'
+      badge.textContent = getMessage('vcrStateMismatch', undefined, '⚠ Conflict detected — manual resolution required')
+      badge.style.color = '#fbbf24'
+      badge.style.background = 'rgba(245,158,11,0.16)'
+      badge.style.borderColor = 'rgba(245,158,11,0.45)'
     }
     if (banner) {
-      banner.classList.remove('hidden')
-      banner.hidden = false
+      banner.style.border = '1px solid rgba(245,158,11,0.55)'
+      banner.style.background = 'rgba(245,158,11,0.12)'
     }
     if (bannerTitle) {
-      bannerTitle.textContent = getMessage('vcrBannerTitleActive', undefined, '⚠ Vault Hash Mismatch Detected Between This Device and Cloud')
+      bannerTitle.style.color = '#fbbf24'
+      bannerTitle.textContent = getMessage('vcrBannerTitleActive', undefined, '⚠ CONFLICT DETECTED — Local and Cloud vaults have diverged')
+    }
+    if (bannerPill) {
+      bannerPill.textContent = 'CONFLICT FOUND'
+      bannerPill.style.background = 'rgba(245,158,11,0.22)'
+      bannerPill.style.color = '#fbbf24'
+      bannerPill.style.border = '1px solid rgba(245,158,11,0.45)'
     }
     if (bannerSub) {
-      const cCount = Number(conflict.conflictCount || 0)
-      const dCount = Number(conflict.diffCount || 0)
-      bannerSub.textContent = `Local SHA-256 (${shortHash(conflict.localHash)}) and Cloud SHA-256 (${shortHash(conflict.remoteHash)}) diverged (${cCount} direct entry conflict${cCount === 1 ? '' : 's'}, ${dCount} total entry diff${dCount === 1 ? '' : 's'}). Automatic cloud overwrite is paused until you choose which version to keep.`
+      const cCount = Number((conflict && conflict.conflictCount) || 1)
+      const dCount = Number((conflict && conflict.diffCount) || cCount)
+      bannerSub.textContent = `Local SHA-256 (${shortHash(localHashVal)}) and Cloud SHA-256 (${shortHash(conflict && conflict.remoteHash)}) do not match (${cCount} direct entry conflict${cCount === 1 ? '' : 's'}, ${dCount} total entry diff${dCount === 1 ? '' : 's'}). Choose an action below: Use Local Version, Use Cloud Version, Merge Both, or Delete the Conflicted Cloud Copy.`
     }
-  } else if (conflict && conflict.resolvedAt) {
-    if (badge) {
-      badge.textContent = `✓ Resolved (${conflict.resolvedChoice || 'merge'}) · ${new Date(conflict.resolvedAt).toLocaleTimeString()}`
-      badge.style.color = 'var(--ok, #1e8e3e)'
-    }
-    if (banner) { banner.classList.add('hidden'); banner.hidden = true }
-  } else if (conflict && conflict.autoMerged) {
-    if (badge) {
-      badge.textContent = `✓ Auto-merged (${conflict.conflictCount || 1} conflict copy saved in password history)`
-      badge.style.color = 'var(--accent, #22c55e)'
-    }
-    if (banner) { banner.classList.add('hidden'); banner.hidden = true }
   } else {
-    if (badge) {
-      badge.textContent = getMessage('vcrStateClean', undefined, '✓ Hashes in sync')
-      badge.style.color = ''
+    if (banner) {
+      banner.style.border = '1px solid rgba(34,197,94,0.45)'
+      banner.style.background = 'rgba(34,197,94,0.10)'
     }
-    if (banner) { banner.classList.add('hidden'); banner.hidden = true }
+    if (bannerTitle) {
+      bannerTitle.style.color = '#4ade80'
+      bannerTitle.textContent = '✓ NO CONFLICT FOUND — Everything is fine. Local and Cloud vaults are in sync.'
+    }
+    if (bannerPill) {
+      bannerPill.textContent = 'NO CONFLICT'
+      bannerPill.style.background = 'rgba(34,197,94,0.20)'
+      bannerPill.style.color = '#4ade80'
+      bannerPill.style.border = '1px solid rgba(34,197,94,0.40)'
+    }
+    if (conflict && conflict.resolvedAt) {
+      const resolvedLabel = conflict.resolvedChoice === 'delete-cloud'
+        ? 'Deleted Cloud Copy (Kept Local)'
+        : (conflict.resolvedChoice || 'merge')
+      if (badge) {
+        badge.textContent = `✓ No conflict · Resolved (${resolvedLabel})`
+        badge.style.color = '#4ade80'
+        badge.style.background = 'rgba(34,197,94,0.14)'
+        badge.style.borderColor = 'rgba(34,197,94,0.35)'
+      }
+      if (bannerSub) {
+        bannerSub.textContent = conflict.deletedCloud
+          ? `Remote conflicted cloud copy was deleted at ${new Date(conflict.resolvedAt).toLocaleTimeString()}. Your local vault (${localEntriesLabel}, SHA-256 ${shortHash(localHashVal)}) is intact and conflict-free.`
+          : `Last conflict was resolved using "${resolvedLabel}" at ${new Date(conflict.resolvedAt).toLocaleTimeString()}. Local and Cloud vaults match (${localEntriesLabel}, SHA-256 ${shortHash(localHashVal)}).`
+      }
+    } else if (conflict && conflict.autoMerged) {
+      if (badge) {
+        badge.textContent = `✓ No conflict · Auto-merged (${conflict.conflictCount || 1} saved in history)`
+        badge.style.color = '#4ade80'
+        badge.style.background = 'rgba(34,197,94,0.14)'
+        badge.style.borderColor = 'rgba(34,197,94,0.35)'
+      }
+      if (bannerSub) {
+        bannerSub.textContent = `Automatic Smart Merge unified Local and Cloud changes and preserved ${conflict.conflictCount || 1} conflicting password(s) in entry history. Both vaults are now in sync (SHA-256 ${shortHash(localHashVal)}).`
+      }
+    } else {
+      if (badge) {
+        badge.textContent = getMessage('vcrStateClean', undefined, '✓ No conflict — Hashes in sync')
+        badge.style.color = '#4ade80'
+        badge.style.background = 'rgba(34,197,94,0.14)'
+        badge.style.borderColor = 'rgba(34,197,94,0.35)'
+      }
+      if (bannerSub) {
+        if (conflict && conflict.localHash && conflict.remoteHash && conflict.localHash === conflict.remoteHash) {
+          bannerSub.textContent = `Verified canonical SHA-256 digest ${shortHash(conflict.localHash)} matches across This Device and Cloud Backup (${localEntriesLabel}). Zero conflicts detected — all vault resolution and cloud management actions below remain unlocked if needed.`
+        } else {
+          bannerSub.textContent = `Zero vault conflicts detected (${localEntriesLabel}${localHashVal ? ' · Local SHA-256 ' + shortHash(localHashVal) : ''}). Click "Compare Local vs. Cloud Hashes Now" anytime to verify live cloud digests, or use any vault action below.`
+        }
+      }
+    }
   }
 
   if (localHashEl) {
-    localHashEl.textContent = conflict && conflict.localHash ? shortHash(conflict.localHash) : '—'
-    localHashEl.title = (conflict && conflict.localHash) || ''
+    localHashEl.textContent = localHashVal ? shortHash(localHashVal) : '—'
+    localHashEl.title = localHashVal || ''
   }
   if (localCountEl) {
-    localCountEl.textContent = conflict && conflict.localEntryCount != null
-      ? `${conflict.localEntryCount} entries · ${conflict.localTombstoneCount || 0} tombstones`
+    localCountEl.textContent = localCountVal != null
+      ? `${localCountVal} entries · ${localTombVal} tombstones`
       : '— entries'
   }
   if (localTimeEl) {
-    localTimeEl.textContent = conflict && conflict.localUpdatedAt
-      ? `Updated: ${new Date(conflict.localUpdatedAt).toLocaleString()}`
+    localTimeEl.textContent = localTimeVal
+      ? `Updated: ${new Date(localTimeVal).toLocaleString()}`
       : 'Updated: —'
   }
+
+  const remoteDeleted = !!(conflict && conflict.deletedCloud)
+  const remoteHashVal = remoteDeleted ? null : ((conflict && conflict.remoteHash) || null)
+  const remoteCountVal = remoteDeleted ? null : ((conflict && conflict.remoteEntryCount != null) ? conflict.remoteEntryCount : null)
+  const remoteTombVal = (conflict && conflict.remoteTombstoneCount != null) ? conflict.remoteTombstoneCount : 0
+  const remoteTimeVal = remoteDeleted ? null : ((conflict && conflict.remoteUpdatedAt) || null)
 
   if (cloudHashEl) {
-    cloudHashEl.textContent = conflict && conflict.remoteHash ? shortHash(conflict.remoteHash) : '—'
-    cloudHashEl.title = (conflict && conflict.remoteHash) || ''
+    cloudHashEl.textContent = remoteDeleted
+      ? 'Deleted (none on cloud)'
+      : (remoteHashVal ? shortHash(remoteHashVal) : (localHashVal && conflict && conflict.inSync ? shortHash(localHashVal) : '—'))
+    cloudHashEl.title = remoteHashVal || ''
   }
   if (cloudCountEl) {
-    cloudCountEl.textContent = conflict && conflict.remoteEntryCount != null
-      ? `${conflict.remoteEntryCount} entries · ${conflict.remoteTombstoneCount || 0} tombstones`
-      : '— entries'
+    cloudCountEl.textContent = remoteDeleted
+      ? '0 entries (cloud copy removed)'
+      : (remoteCountVal != null
+          ? `${remoteCountVal} entries · ${remoteTombVal} tombstones`
+          : 'Click "Compare Hashes Now" to inspect')
   }
   if (cloudTimeEl) {
-    cloudTimeEl.textContent = conflict && conflict.remoteUpdatedAt
-      ? `Updated: ${new Date(conflict.remoteUpdatedAt).toLocaleString()}`
-      : 'Updated: —'
+    cloudTimeEl.textContent = remoteDeleted
+      ? `Deleted: ${new Date(conflict.resolvedAt).toLocaleString()}`
+      : (remoteTimeVal
+          ? `Updated: ${new Date(remoteTimeVal).toLocaleString()}`
+          : 'Updated: —')
   }
 
+  const mergedHashVal = (conflict && conflict.mergedHash) || localHashVal || null
+  const mergedCountVal = (conflict && conflict.mergedEntryCount != null) ? conflict.mergedEntryCount : localCountVal
+
   if (mergedHashEl) {
-    mergedHashEl.textContent = conflict && conflict.mergedHash ? shortHash(conflict.mergedHash) : '—'
-    mergedHashEl.title = (conflict && conflict.mergedHash) || ''
+    mergedHashEl.textContent = mergedHashVal ? shortHash(mergedHashVal) : '—'
+    mergedHashEl.title = mergedHashVal || ''
   }
   if (mergedCountEl) {
-    mergedCountEl.textContent = conflict && conflict.mergedEntryCount != null
-      ? `${conflict.mergedEntryCount} entries · conflict passwords kept in history`
+    mergedCountEl.textContent = mergedCountVal != null
+      ? `${mergedCountVal} entries · conflict passwords kept in history`
       : '— entries (conflict copies preserved)'
   }
 
   if (btnLocal) btnLocal.disabled = !canAct
   if (btnCloud) btnCloud.disabled = !canAct
   if (btnMerge) btnMerge.disabled = !canAct
+  if (btnDeleteCloud) btnDeleteCloud.disabled = !canAct
 
   const diffs = (conflict && Array.isArray(conflict.diffs) && conflict.diffs.length)
     ? conflict.diffs
@@ -5416,6 +5540,16 @@ function initVaultConflictResolver() {
     resultEl.textContent = msg
   }
 
+  // When user expands Conflict Resolver manually, auto-run a live hash check if not yet compared
+  card.addEventListener('toggle', () => {
+    if (card.open && !_vcrAutoCheckedOnOpen) {
+      _vcrAutoCheckedOnOpen = true
+      bgSend('VAULT_CONFLICT_CHECK_NOW')
+        .then(() => renderVaultConflictResolver())
+        .catch(() => {})
+    }
+  })
+
   $('vcrManualPolicyToggle')?.addEventListener('change', async (e) => {
     const manual = !!(e.target && e.target.checked)
     try {
@@ -5440,11 +5574,15 @@ function initVaultConflictResolver() {
       if (!r || !r.ok) {
         showResult('✗ ' + ((r && r.error) || 'Could not compare vault hashes — verify your vault is unlocked and cloud is connected.'), false)
       } else if (r.inSync) {
-        showResult(`✓ Local and Cloud vaults are in sync — SHA-256 ${shortHash(r.localHash)} (${r.entryCount || 0} entries).`, true)
+        if (r.noRemoteCopy) {
+          showResult(`✓ No conflict found — Local vault has ${r.entryCount || 0} entries (SHA-256 ${shortHash(r.localHash)}). No remote cloud backup exists yet.`, true)
+        } else {
+          showResult(`✓ NO CONFLICT FOUND — Local and Cloud vaults are in sync (SHA-256 ${shortHash(r.localHash)} · ${r.entryCount || 0} entries).`, true)
+        }
       } else if (r.conflict) {
         const c = r.conflict
         if (c.hasConflict) {
-          showResult(`⚠ Hash mismatch detected: Local (${shortHash(c.localHash)}) ≠ Cloud (${shortHash(c.remoteHash)}) — ${c.conflictCount} entry conflict(s). Choose Local, Cloud, or Smart Merge above.`, false)
+          showResult(`⚠ CONFLICT DETECTED: Local (${shortHash(c.localHash)}) ≠ Cloud (${shortHash(c.remoteHash)}) — ${c.conflictCount} entry conflict(s). Choose Local, Cloud, Smart Merge, or Delete Cloud Copy above.`, false)
         } else {
           showResult(`ℹ Local (${shortHash(c.localHash)}) and Cloud (${shortHash(c.remoteHash)}) have ${c.diffCount} non-conflicting addition(s) ready to merge.`, true)
         }
@@ -5458,22 +5596,27 @@ function initVaultConflictResolver() {
   })
 
   const handleResolve = async (choice, label) => {
-    const btns = [$('vcrChooseLocalBtn'), $('vcrChooseCloudBtn'), $('vcrChooseMergeBtn')]
+    const btns = [$('vcrChooseLocalBtn'), $('vcrChooseCloudBtn'), $('vcrChooseMergeBtn'), $('vcrDeleteCloudBtn')]
     btns.forEach(b => { if (b) b.disabled = true })
     showResult(`Applying ${label}…`, true)
     try {
       const r = await bgSend('VAULT_CONFLICT_RESOLVE', { choice })
       if (r && r.ok) {
-        const pushedNote = r.pushed ? ' and pushed to Cloud' : ''
-        showResult(`✓ Conflict resolved using ${label} (${r.entryCount ?? 0} entries, SHA-256 ${shortHash(r.hash)})${pushedNote}.`, true)
-        toast(`✓ Vault conflict resolved (${label}).`, 'ok')
+        if (choice === 'delete-cloud') {
+          showResult(`✓ Conflicted cloud vault copy deleted. Local vault kept intact (${r.entryCount ?? 0} entries, SHA-256 ${shortHash(r.hash)}).`, true)
+          toast('✓ Cloud vault copy deleted — local vault kept intact.', 'ok')
+        } else {
+          const pushedNote = r.pushed ? ' and pushed to Cloud' : ''
+          showResult(`✓ Vault updated using ${label} (${r.entryCount ?? 0} entries, SHA-256 ${shortHash(r.hash)})${pushedNote}.`, true)
+          toast(`✓ Vault resolved (${label}).`, 'ok')
+        }
         await renderVaultConflictResolver()
         await renderCloudBackupBlock().catch(() => {})
         await renderSyncStatusStrip().catch(() => {})
         if (typeof refreshVault === 'function') refreshVault()
       } else {
-        showResult('✗ ' + ((r && r.error) || 'Could not resolve vault conflict.'), false)
-        toast((r && r.error) || 'Conflict resolution failed', 'error')
+        showResult('✗ ' + ((r && r.error) || 'Could not apply vault resolution action.'), false)
+        toast((r && r.error) || 'Vault action failed', 'error')
       }
     } catch (err) {
       showResult('✗ ' + String((err && err.message) || err), false)
@@ -5485,6 +5628,14 @@ function initVaultConflictResolver() {
   $('vcrChooseLocalBtn')?.addEventListener('click', () => handleResolve('local', 'Local Device Version'))
   $('vcrChooseCloudBtn')?.addEventListener('click', () => handleResolve('cloud', 'Cloud Backup Version'))
   $('vcrChooseMergeBtn')?.addEventListener('click', () => handleResolve('merge', 'Smart Merge (with conflict history)'))
+  $('vcrDeleteCloudBtn')?.addEventListener('click', async () => {
+    const ok = await confirmAction(
+      'Delete Cloud Vault Copy?',
+      'This will delete the encrypted vault copy currently stored in your cloud backup while keeping your Local Vault on this device completely intact. Continue?'
+    )
+    if (!ok) return
+    await handleResolve('delete-cloud', 'Delete Cloud Conflicted Copy (Keep Local)')
+  })
 
   try {
     if (chrome && chrome.storage && chrome.storage.onChanged) {
@@ -7820,6 +7971,13 @@ function switchLab(mode, { focusTab = false } = {}) {
     p.classList.toggle('hidden', p.id !== 'labpanel-' + mode)
   })
   $('labOutputCard').style.display = LAB_GENERATING_MODES.includes(mode) ? '' : 'none'
+  if ($('genHeroStateText') && !LAB_GENERATING_MODES.includes(mode)) {
+    if (mode === 'analyze') {
+      $('genHeroStateText').textContent = 'Offline Entropy Analyzer active · 100% client-side · nothing leaves this device'
+    } else if (mode === 'bulk') {
+      $('genHeroStateText').textContent = 'Bulk Secret Generator active · generate 2–100 secrets in one batch'
+    }
+  }
   if (labPrefs.managerMode !== mode) {
     labPrefs.managerMode = mode
     persistLabPrefs()
@@ -7962,6 +8120,11 @@ async function refreshGenerator() {
   $('bulkMode').value = labPrefs.bulkMode || 'random'
   $('labHistoryEnabled').checked = !!labPrefs.historyEnabled
   labSyncSwitches()
+  renderLabHistory()
+  if (labPrefs.historyEnabled && $('labHistoryBox')) {
+    $('labHistoryBox').open = true
+    try { SettledHouse.reveal('gen-session-history').catch(() => {}) } catch { /* non-fatal */ }
+  }
   switchLab(labPrefs.managerMode || 'random')
   if (LAB_GENERATING_MODES.includes(labMode) && !labSecret) await labGenerate()
 }
@@ -8110,6 +8273,9 @@ function renderLabSecret(result) {
   $('labRevealBtn').textContent = getMessage('entryHideBtn', undefined, 'Hide')
   $('labRevealBtn').setAttribute('aria-pressed', 'true')
   $('labBits').textContent = getMessage('labBitsLine', [result.kind, String(Math.round(result.entropyBits))], `${result.kind} · ≈${Math.round(result.entropyBits)} bits`)
+  if ($('genHeroStateText')) {
+    $('genHeroStateText').textContent = `WebCrypto CSPRNG · Active mode: ${result.kind} (≈${Math.round(result.entropyBits)} bits) · 100% offline`
+  }
   if (isMn) {
     $('labStrengthBadge').hidden = true
     $('labStrengthFill').style.width = '100%'
@@ -8496,13 +8662,23 @@ async function mnemonicCheck() {
 // ── Session history (redacted metadata, default off, never values) ──────────
 
 function pushLabHistory(result) {
-  if (result.kind === 'mnemonic') return // NEVER listed
-  if (!$('labHistoryEnabled').checked) return
+  if (!result || result.kind === 'mnemonic') return // NEVER listed
+  const cb = $('labHistoryEnabled')
+  if (!cb || !cb.checked) return
+  const valStr = String(result.value || '')
+  if (!valStr) return
+  // Avoid pushing duplicate consecutive entries for the exact same secret
+  const last = labSessionHistory[labSessionHistory.length - 1]
+  if (last && last.value === valStr && last.kind === result.kind) {
+    renderLabHistory()
+    return
+  }
   labSessionHistory.push({
     kind: result.kind,
-    bits: Math.round(result.entropyBits),
+    bits: Math.round(result.entropyBits || 0),
     at: Date.now(),
-    preview: String(result.value).slice(0, 2) + '…' + String(result.value).length + ' chars',
+    preview: valStr.slice(0, 2) + '…' + valStr.length + ' chars',
+    value: valStr,
   })
   if (labSessionHistory.length > 100) labSessionHistory.shift()
   renderLabHistory()
@@ -8510,10 +8686,53 @@ function pushLabHistory(result) {
 
 function renderLabHistory() {
   const list = $('labHistoryList')
+  const badge = $('labHistoryCountBadge')
+  const emptyEl = $('labHistoryEmptyState')
+  const enabled = !!($('labHistoryEnabled') && $('labHistoryEnabled').checked)
+  const sw = $('labHistorySwitch')
+  if (sw) sw.classList.toggle('on', enabled)
+
+  if (badge) {
+    badge.textContent = enabled
+      ? `${labSessionHistory.length} saved`
+      : 'Off'
+    badge.style.color = enabled ? 'var(--accent, #22c55e)' : 'var(--muted)'
+    badge.style.borderColor = enabled ? 'rgba(34,197,94,0.35)' : 'var(--border)'
+  }
+
+  if (emptyEl) {
+    if (!enabled) {
+      emptyEl.hidden = false
+      emptyEl.textContent = 'Toggle "Keep this session" ON to record secrets generated during this session (auto-wiped when locked or closed).'
+    } else if (labSessionHistory.length === 0) {
+      emptyEl.hidden = false
+      emptyEl.textContent = 'Session history is ON — click Regenerate to record secrets here.'
+    } else {
+      emptyEl.hidden = true
+    }
+  }
+
+  if (!list) return
   list.textContent = ''
   for (const h of [...labSessionHistory].reverse()) {
     const li = document.createElement('li')
-    li.textContent = `${h.preview} · ${h.kind} · ${h.bits} bits · ${new Date(h.at).toLocaleTimeString()}`
+    li.className = 'lab-history-row'
+    li.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid var(--border);margin-bottom:4px'
+    const meta = document.createElement('span')
+    meta.textContent = `${h.preview} · ${h.kind} · ${h.bits} bits · ${new Date(h.at).toLocaleTimeString()}`
+    li.appendChild(meta)
+    if (h.value) {
+      const copyBtn = document.createElement('button')
+      copyBtn.type = 'button'
+      copyBtn.className = 'btn sm ghost'
+      copyBtn.style.cssText = 'padding:2px 8px;font-size:11px'
+      copyBtn.textContent = getMessage('genCopyBtn', undefined, 'Copy')
+      copyBtn.addEventListener('click', async () => {
+        await copyAndScheduleClear(h.value)
+        toast(getMessage('toastCopiedAutoClear', undefined, 'Copied to clipboard (auto-clears in 30s)'))
+      })
+      li.appendChild(copyBtn)
+    }
     list.appendChild(li)
   }
 }
@@ -8573,10 +8792,12 @@ async function scrapeWordlist() {
     $('exportWordlistBtn').disabled = false
     $('deleteWordlistBtn').disabled = false
     refreshWlEmptyState()
+    refreshWlHeroStatus(unique.length)
+    updatePpWlStatus()
     toast(getMessage('toastWlSaved', [String(unique.length)], `Saved ${unique.length} words`))
   } else {
     const err = (r && r.error) || 'Fetch failed'
-    const hint = (r && r.hint) || getMessage('wlImportHint', undefined, 'You can import a .json wordlist file instead.')
+    const hint = (r && r.hint) || getMessage('wlImportHint', undefined, 'You can import a .json wordlist file or paste text below instead.')
     resultEl.innerHTML = `<span class="err">✗ ${err}</span><div class="card-help card-help-subtle">${hint}</div>`
   }
 }
@@ -8609,12 +8830,84 @@ function importWordlist(file) {
       $('exportWordlistBtn').disabled = false
       $('deleteWordlistBtn').disabled = false
       refreshWlEmptyState()
+      refreshWlHeroStatus(words.length)
+      updatePpWlStatus()
       toast(getMessage('toastWlImported', [String(words.length)], `Imported ${words.length} words`))
     } catch (err) {
       toast(getMessage('toastImportFailed', [err.message], 'Import failed: ' + err.message), 'error')
     }
   }
   reader.readAsText(file)
+}
+
+function refreshWlHeroStatus(count = 0) {
+  const n = Number(count) || 0
+  const stateEl = $('wlHeroStateText')
+  if (stateEl) {
+    stateEl.textContent = n > 0
+      ? `EFF Large (7,776) & Short (1,296) active · Custom list: ${n} words stored locally`
+      : 'EFF Large (7,776 words) & Short (1,296 words) bundled offline · No custom list yet'
+  }
+  const chipEl = $('wlChipScrapeText')
+  if (chipEl) {
+    chipEl.textContent = n > 0 ? `Custom list: ${n} words` : 'HTTPS URL / Text Builder'
+  }
+}
+
+function extractCustomWordsFromText(rawText) {
+  const tokens = String(rawText || '').toLowerCase().match(/[a-z]{3,16}/g) || []
+  const seen = new Set()
+  const unique = []
+  for (const w of tokens) {
+    if (!seen.has(w)) {
+      seen.add(w)
+      unique.push(w)
+      if (unique.length >= 20000) break
+    }
+  }
+  return unique
+}
+
+const SAMPLE_CUSTOM_WORDLIST_TEXT = [
+  'albedo', 'altair', 'amber', 'anchor', 'andromeda', 'apogee', 'aquamarine', 'arbor', 'arcturus', 'argon',
+  'astrolabe', 'aurora', 'azimuth', 'basalt', 'beacon', 'beryl', 'bismuth', 'blizzard', 'borealis', 'bramble',
+  'cadence', 'caldera', 'canopy', 'canyon', 'capella', 'caravel', 'cascade', 'cassini', 'cedar', 'celestial',
+  'centauri', 'cerulean', 'chalice', 'chronicle', 'cipher', 'cirrus', 'citadel', 'cobalt', 'comet', 'compass',
+  'conifer', 'constellation', 'copper', 'corona', 'cosmos', 'crater', 'crescent', 'crimson', 'crystal', 'cygnus',
+  'delta', 'deneb', 'diadem', 'digest', 'dolphin', 'draco', 'dynamo', 'eclipse', 'edifice', 'emerald',
+  'emblem', 'ember', 'enigma', 'entropy', 'equinox', 'estuary', 'falcon', 'feldspar', 'filament', 'fjord',
+  'flint', 'fortress', 'fresco', 'galaxy', 'galleon', 'garnet', 'gazelle', 'gemini', 'geode', 'glacier',
+  'granite', 'gravity', 'halcyon', 'harbor', 'harmony', 'helios', 'horizon', 'hyperion', 'igneous', 'indigo',
+  'ionosphere', 'iridium', 'island', 'jasper', 'juniper', 'kestrel', 'kinetic', 'krypton', 'lagoon', 'lantern',
+  'lapis', 'latitude', 'lattice', 'legend', 'lichen', 'lithium', 'lodestar', 'lumen', 'lyra', 'magnetar',
+  'malachite', 'addendum', 'mariner', 'meadow', 'meridian', 'meteor', 'mirage', 'monolith', 'monsoon', 'nebula'
+].join(' ')
+
+async function buildCustomWordlistFromPaste(rawText) {
+  const resultEl = $('scrapeResult')
+  const unique = extractCustomWordsFromText(rawText)
+  if (unique.length < 10) {
+    if (resultEl) {
+      resultEl.classList.remove('hidden')
+      resultEl.innerHTML = `<span class="err">✗ Need at least 10 unique words (3–16 letters each). Found ${unique.length}.</span>`
+    }
+    toast(getMessage('wlNeedTen', undefined, 'Need at least 10 valid words'), 'error')
+    return
+  }
+  await saveCustomWordlist(unique)
+  if (resultEl) {
+    resultEl.classList.remove('hidden')
+    resultEl.innerHTML =
+      `<span class="ok">✓ Built custom wordlist with <strong>${unique.length}</strong> unique words</span>` +
+      `<div class="word-preview">${getMessage('wlSample', [unique.slice(0, 30).join(', ')], `Sample: ${unique.slice(0, 30).join(', ')}…`)}</div>` +
+      `<div class="card-help card-help-subtle">${getMessage('wlLocalNote', undefined, 'Stored on this device only — custom wordlists are never synced.')}</div>`
+  }
+  $('exportWordlistBtn').disabled = false
+  $('deleteWordlistBtn').disabled = false
+  refreshWlEmptyState()
+  refreshWlHeroStatus(unique.length)
+  updatePpWlStatus()
+  toast(getMessage('toastWlSaved', [String(unique.length)], `Saved ${unique.length} words`))
 }
 
 // R173 §Arc B (B8) — the Wordlists tab speaks its empty state on arrival
@@ -8631,6 +8924,8 @@ async function deleteCustomWordlist() {
   $('exportWordlistBtn').disabled = true
   $('deleteWordlistBtn').disabled = true
   refreshWlEmptyState()
+  refreshWlHeroStatus(0)
+  updatePpWlStatus()
   toast(getMessage('toastWlDeleted', undefined, 'Custom wordlist deleted'))
 }
 
@@ -10026,7 +10321,7 @@ async function init() {
     const MIGRATION_KEY = 'ucrypt:migrationNote2.47.0'
     const { [MIGRATION_KEY]: acked } = await chrome.storage.local.get(MIGRATION_KEY)
     const banner = $('identityMigrationNote')
-    if (banner && !acked) banner.hidden = false
+    if (banner) banner.hidden = !(acked && acked.pending === true)
     $('migrationNoteAck')?.addEventListener('click', async () => {
       await chrome.storage.local.set({ [MIGRATION_KEY]: { ackedAt: Date.now() } })
       if (banner) banner.hidden = true
@@ -11690,6 +11985,7 @@ async function renderPasswordHealthDashboard() {
     cb.addEventListener('change', () => {
       const sw = cb.parentElement.querySelector('.switch')
       if (sw) sw.classList.toggle('on', cb.checked)
+      if (cb.id === 'labHistoryEnabled') return
       if (LAB_GENERATING_MODES.includes(labMode)) labGenerate({ silent: true })
     })
   })
@@ -11766,9 +12062,25 @@ async function renderPasswordHealthDashboard() {
   $('labConfirmCancel').addEventListener('click', () => labConfirmResolve(false))
   $('labFilterRelax').addEventListener('click', () => { if (labFilterResolve) { labFilterResolve(true); labFilterResolve = null } $('labFilterDialog').classList.add('hidden') })
   $('labFilterCancel').addEventListener('click', () => { if (labFilterResolve) { labFilterResolve(false); labFilterResolve = null } $('labFilterDialog').classList.add('hidden') })
-  // session history
+  // session history (UCRYPT-31: prevent <summary> from swallowing toggle clicks,
+  // auto-open history drawer when enabled, and immediately record current secret)
+  $('labHistoryToggleLabel')?.addEventListener('click', (e) => {
+    e.stopPropagation()
+  })
   $('labHistoryEnabled').addEventListener('change', () => {
-    if (!$('labHistoryEnabled').checked) labSessionHistory = []
+    const enabled = $('labHistoryEnabled').checked
+    const sw = $('labHistorySwitch')
+    if (sw) sw.classList.toggle('on', enabled)
+    if (!enabled) {
+      labSessionHistory = []
+    } else {
+      const box = $('labHistoryBox')
+      if (box) box.open = true
+      try { SettledHouse.reveal('gen-session-history').catch(() => {}) } catch { /* non-fatal */ }
+      if (labSecret && labSecret.kind !== 'mnemonic' && labSessionHistory.length === 0) {
+        pushLabHistory(labSecret)
+      }
+    }
     renderLabHistory()
     persistLabPrefs()
   })
@@ -11791,6 +12103,14 @@ async function renderPasswordHealthDashboard() {
     const f = e.target.files[0]
     if (f) importWordlist(f)
     e.target.value = ''
+  })
+  $('wlPasteBuildBtn')?.addEventListener('click', () => {
+    const raw = $('wlPasteInput') ? $('wlPasteInput').value : ''
+    buildCustomWordlistFromPaste(raw)
+  })
+  $('wlPasteSampleBtn')?.addEventListener('click', () => {
+    if ($('wlPasteInput')) $('wlPasteInput').value = SAMPLE_CUSTOM_WORDLIST_TEXT
+    buildCustomWordlistFromPaste(SAMPLE_CUSTOM_WORDLIST_TEXT)
   })
 
   // Export / import vault
@@ -12020,9 +12340,12 @@ async function renderPasswordHealthDashboard() {
     $('exportWordlistBtn').disabled = false
     $('deleteWordlistBtn').disabled = false
     refreshWlEmptyState()
+    refreshWlHeroStatus(w.length)
     $('scrapeResult').classList.remove('hidden')
     $('scrapeResult').innerHTML =
       `<span class="ok">${getMessage('wlHasWords', [String(w.length)], `✓ Custom wordlist has <strong>${w.length}</strong> words`)}</span>`
+  } else {
+    refreshWlHeroStatus(0)
   }
 
   refreshVault()

@@ -3023,7 +3023,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
         case 'VAULT_CONFLICT_RESOLVE': {
           try {
-            const choice = msg.choice === 'local' ? 'local' : (msg.choice === 'cloud' ? 'cloud' : 'merge')
+            const choice = msg.choice === 'local'
+              ? 'local'
+              : msg.choice === 'cloud'
+                ? 'cloud'
+                : msg.choice === 'delete-cloud'
+                  ? 'delete-cloud'
+                  : 'merge'
             const res = await v.resolveVaultConflict(choice)
             try { chrome.runtime.sendMessage({ type: 'UCRYPT_VAULT_CONFLICT_CHANGED', resolved: choice, result: res }).catch?.(() => {}) } catch { /* best-effort */ }
             sendResponse(res)
